@@ -5,7 +5,7 @@
 <div align="center">
   
 ## StoryDiffusion: Consistent Self-Attention for Long-Range Image and Video Generation  [![Paper page](https://huggingface.co/datasets/huggingface/badges/resolve/main/paper-page-md-dark.svg)]()
-[[Paper]()] &emsp; [[Project Page](https://storydiffusion.github.io/)] &emsp;  [[🤗 Demo ]()] <br>
+[[Paper]()] &emsp; [[Project Page](https://storydiffusion.github.io/)] &emsp;  [[🤗 Comic Generation Demo ](https://huggingface.co/spaces/YupengZhou/StoryDiffusion)] <br>
 
 
 </div>
@@ -44,12 +44,13 @@ StoryDiffusion can create a magic story by generating consistent images and vide
 ### Image-to-Video generation （Results are HIGHLY compressed for speed）
 Leveraging the images produced through our Consistent Self-Attention mechanism, we can extend the process to create videos by seamlessly transitioning between these images. This can be considered as a two-stage long video generation approach.
 
-Note: results are **highly compressed** for speed, you can visit [our website]() for the high-quality version.
+Note: results are **highly compressed** for speed, you can visit [our website](https://storydiffusion.github.io/) for the high-quality version.
 #### Two-stage Long Videos Generation (New Update)
 Combining the two parts, we can generate very long and high-quality AIGC videos.
 | Video1 | Video2  | Video3  |
 | --- | --- | --- |
-| <img src="https://github.com/HVision-NKU/StoryDiffusion/assets/49511209/4e7e0f24-5f90-419b-9a1e-cdf36d361b26" width=224>  | <img src="https://github.com/HVision-NKU/StoryDiffusion/assets/49511209/f509343d-d691-4e2a-b615-7d96381ef7c1" width=224> | <img src="https://github.com/HVision-NKU/StoryDiffusion/assets/49511209/6faf12a6-5432-4c0c-a4db-a16ac5c94f11" width=224>  |
+| <img src="https://github.com/HVision-NKU/StoryDiffusion/assets/49511209/4e7e0f24-5f90-419b-9a1e-cdf36d361b26" width=224>  | <img src="https://github.com/HVision-NKU/StoryDiffusion/assets/49511209/f509343d-d691-4e2a-b615-7d96381ef7c1" width=224> | <img src="https://github.com/HVision-NKU/StoryDiffusion/assets/49511209/4f0f7abb-4ae4-47a6-b692-5bdd8d9c8006" width=224>  |
+
 
 #### Long Video Result using Condition Images
 Our Image-to-Video model can generate a video by providing a sequence of user-input condition images.
