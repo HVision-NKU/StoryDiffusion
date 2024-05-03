@@ -85,7 +85,7 @@ Our Image-to-Video model can generate a video by providing a sequence of user-in
 
 
 ## 🚩 **TODO/Updates**
-- [x] Commic Results of StoryDiffusion.
+- [x] Comic Results of StoryDiffusion.
 - [x] Video Results of StoryDiffusion.
 - [x] Source code of Comic Generation
 - [x] Source code of gradio demo
