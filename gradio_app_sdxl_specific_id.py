@@ -2,6 +2,7 @@ from email.policy import default
 import gradio as gr
 import numpy as np
 import torch
+from huggingface_hub import hf_hub_download
 import requests
 import random
 import os
@@ -14,7 +15,6 @@ from utils.gradio_utils import is_torch2_available
 if is_torch2_available():
     from utils.gradio_utils import \
         AttnProcessor2_0 as AttnProcessor
-    # from utils.gradio_utils import SpatialAttnProcessor2_0
 else:
     from utils.gradio_utils  import AttnProcessor
 
@@ -37,12 +37,13 @@ DEFAULT_STYLE_NAME = "Japanese Anime"
 global models_dict
 use_va = False
 models_dict = {
-   "Juggernaut":"/mnt/bn/yupengdata2/projects/PhotoMaker/juggernaut-xl-v8" if not use_va else "RunDiffusion/Juggernaut-XL-v8",
-   "RealVision":"/mnt/bn/yupengdata2/projects/PhotoMaker/RealVisXL_V4.0" if not use_va else "SG161222/RealVisXL_V4.0" ,
-   "SDXL":"/mnt/bn/yupengdata2/projects/PhotoMaker/stable-diffusion-xl-base-1.0" if not use_va else "stabilityai/stable-diffusion-xl-base-1.0" ,
-   "Unstable":"/mnt/bn/yupengdata2/projects/PhotoMaker/sdxl-unstable-diffusers-y" if not use_va else "stablediffusionapi/sdxl-unstable-diffusers-y"
+   "Juggernaut": "RunDiffusion/Juggernaut-XL-v8",
+   "RealVision": "SG161222/RealVisXL_V4.0" ,
+   "SDXL": "stabilityai/stable-diffusion-xl-base-1.0" ,
+   "Unstable": "stablediffusionapi/sdxl-unstable-diffusers-y"
 }
-photomaker_path = "/mnt/bn/dq-storage-ckpt/zyp/magicstory_dev/photomaker-v1.bin" if use_va else "/mnt/bn/yupengdata2/projects/PhotoMaker/photomaker-v1.bin"
+photomaker_path =  hf_hub_download(repo_id="TencentARC/PhotoMaker", filename="photomaker-v1.bin", repo_type="model")
+
 MAX_SEED = np.iinfo(np.int32).max
 def setup_seed(seed):
     torch.manual_seed(seed)
@@ -60,22 +61,6 @@ def get_image_path_list(folder_name):
     image_path_list = sorted([os.path.join(folder_name, basename) for basename in image_basename_list])
     return image_path_list
 
-def get_example():
-    case = [
-        [
-            get_image_path_list('./examples/taylor/1.jpeg'),
-            "instagram photo, portrait photo of a woman img, colorful, perfect face, natural skin, hard shadows, film grain",
-            "(No style)",
-            "(asymmetry, worst quality, low quality, illustration, 3d, 2d, painting, cartoons, sketch), open mouth",
-        ],
-        [
-            get_image_path_list('./examples/newton_man'),
-            "sci-fi, closeup portrait photo of a man img wearing the sunglasses in Iron man suit, face, slim body, high quality, film grain",
-            "(No style)",
-            "(asymmetry, worst quality, low quality, illustration, 3d, 2d, painting, cartoons, sketch), open mouth",
-        ],
-    ]
-    return case
 #################################################
 class SpatialAttnProcessor2_0(torch.nn.Module):
     r"""
@@ -123,8 +108,8 @@ class SpatialAttnProcessor2_0(torch.nn.Module):
         else:
             encoder_hidden_states = torch.cat((self.id_bank[cur_step][0].to(self.device),hidden_states[:1],self.id_bank[cur_step][1].to(self.device),hidden_states[1:]))
         # 判断随机数是否大于0.5
-        if cur_step <5:
-            hidden_states = self.__call2__(attn, hidden_states,encoder_hidden_states,attention_mask,temb)
+        if cur_step <1:
+            hidden_states = self.__call2__(attn, hidden_states,None,attention_mask,temb)
         else:   # 256 1024 4096
             random_number = random.random()
             if cur_step <20:
@@ -632,22 +617,9 @@ with gr.Blocks(css=css) as demo:
 
     with gr.Row():
         with gr.Group(elem_id="main-image"):
-            # button_run = gr.Button("generate id images ! 😺", elem_id="main_button", interactive=True)
 
             prompts = []
             colors = []
-            # with gr.Column(visible=False) as post_sketch:
-            #     for n in range(MAX_COLORS):
-            #         if n == 0 :
-            #             with gr.Row(visible=False) as color_row[n]:
-            #                 colors.append(gr.Image(shape=(100, 100), label="background", type="pil", image_mode="RGB", width=100, height=100))
-            #                 prompts.append(gr.Textbox(label="Prompt for the background (white region)", value=""))
-            #         else:
-            #             with gr.Row(visible=False) as color_row[n]:
-            #                 colors.append(gr.Image(shape=(100, 100), label="segment "+str(n), type="pil", image_mode="RGB", width=100, height=100))
-            #                 prompts.append(gr.Textbox(label="Prompt for the segment "+str(n)))
-
-            #     get_genprompt_run = gr.Button("(2) I've finished segment labeling ! 😺", elem_id="prompt_button", interactive=True)
 
             with gr.Column(visible=True) as gen_prompt_vis:
                 sd_type = gr.Dropdown(choices=list(models_dict.keys()), value = "Unstable",label="sd_type", info="Select pretrained model")
@@ -665,11 +637,9 @@ with gr.Blocks(css=css) as demo:
                 style = gr.Dropdown(label="Style template", choices=STYLE_NAMES, value=DEFAULT_STYLE_NAME)
                 prompt_array = gr.Textbox(lines = 3,value='', label="(3) Comic Description (each line corresponds to a frame).", interactive=True)
                 with gr.Accordion("(4) Tune the hyperparameters", open=True):
-                    #sa16_ = gr.Slider(label=" (The degree of Paired Attention at 16 x 16 self-attention layers) ", minimum=0, maximum=1., value=0.3, step=0.1)
-                    sa32_ = gr.Slider(label=" (The degree of Paired Attention at 32 x 32 self-attention layers) ", minimum=0, maximum=1., value=0.7, step=0.1)
-                    sa64_ = gr.Slider(label=" (The degree of Paired Attention at 64 x 64 self-attention layers) ", minimum=0, maximum=1., value=0.7, step=0.1)
+                    sa32_ = gr.Slider(label=" (The degree of Paired Attention at 32 x 32 self-attention layers) ", minimum=0, maximum=1., value=0.5, step=0.1)
+                    sa64_ = gr.Slider(label=" (The degree of Paired Attention at 64 x 64 self-attention layers) ", minimum=0, maximum=1., value=0.5, step=0.1)
                     id_length_ = gr.Slider(label= "Number of id images in total images" , minimum=2, maximum=4, value=2, step=1)
-                    # total_length_ = gr.Slider(label= "Number of total images", minimum=1, maximum=20, value=1, step=1)
                     seed_ = gr.Slider(label="Seed", minimum=-1, maximum=MAX_SEED, value=0, step=1)
                     num_steps = gr.Slider( 
                         label="Number of sample steps",
@@ -734,6 +704,19 @@ with gr.Blocks(css=css) as demo:
 
     gr.Examples(
         examples=[
+            [0,0.5,0.5,2,"a man, wearing black suit",
+                "bad anatomy, bad hands, missing fingers, extra fingers, three hands, three legs, bad arms, missing legs, missing arms, poorly drawn face, bad face, fused face, cloned face, three crus, fused feet, fused thigh, extra crus, ugly fingers, horn, cartoon, cg, 3d, unreal, animate, amputation, disconnected limbs",
+                array2string(["at home, read new paper #at home, The newspaper says there is a treasure house in the forest.",
+                            "on the road, near the forest",
+                            "[NC] The car on the road, near the forest #He drives to the forest in search of treasure.",
+                            "[NC]A tiger appeared in the forest, at night ",
+                            "very frightened, open mouth, in the forest, at night",
+                            "running very fast, in the forest, at night",
+                            "[NC] A house in the forest, at night #Suddenly, he discovers the treasure house!",
+                            "in the house filled with  treasure, laughing, at night #He is overjoyed inside the house."
+                            ]),
+                            "Comic book","Only Using Textual Description",get_image_path_list('./examples/taylor'),768,768
+            ],
             [1,0.5,0.5,3,"a woman img, wearing a white T-shirt, blue loose hair",
                    "bad anatomy, bad hands, missing fingers, extra fingers, three hands, three legs, bad arms, missing legs, missing arms, poorly drawn face, bad face, fused face, cloned face, three crus, fused feet, fused thigh, extra crus, ugly fingers, horn, cartoon, cg, 3d, unreal, animate, amputation, disconnected limbs",
                    array2string(["wake up in the bed",
@@ -744,7 +727,7 @@ with gr.Blocks(css=css) as demo:
                                 "lying in bed at night"]),
                                 "Japanese Anime",  "Using Ref Images",get_image_path_list('./examples/taylor'),768,768
                 ],
-                [0,0.5,0.5,2,"a man, wearing black jacket",
+                [0,0.5,0.5,3,"a man, wearing black jacket",
                    "bad anatomy, bad hands, missing fingers, extra fingers, three hands, three legs, bad arms, missing legs, missing arms, poorly drawn face, bad face, fused face, cloned face, three crus, fused feet, fused thigh, extra crus, ugly fingers, horn, cartoon, cg, 3d, unreal, animate, amputation, disconnected limbs",
                    array2string(["wake up in the bed",
                                 "have breakfast",
@@ -755,7 +738,7 @@ with gr.Blocks(css=css) as demo:
                                 ]),
                                 "Japanese Anime","Only Using Textual Description",get_image_path_list('./examples/taylor'),768,768
                 ],
-                [0,0.3,0.5,2,"a girl, wearing white shirt, black skirt, black tie, yellow hair",
+                [0,0.3,0.5,3,"a girl, wearing white shirt, black skirt, black tie, yellow hair",
                    "bad anatomy, bad hands, missing fingers, extra fingers, three hands, three legs, bad arms, missing legs, missing arms, poorly drawn face, bad face, fused face, cloned face, three crus, fused feet, fused thigh, extra crus, ugly fingers, horn, cartoon, cg, 3d, unreal, animate, amputation, disconnected limbs",
                     array2string([
                             "at home #at home, began to go to drawing",
@@ -765,13 +748,9 @@ with gr.Blocks(css=css) as demo:
                             "look around in the park. # She looks around and enjoys the beauty of nature.",
                             "[NC]leaf falls from the tree, landing on the sketchbook.",
                             "picks up the leaf, examining its details closely.",
-                            "starts sketching the leaf with intricate lines.",
-                            "holds up the sketch drawing of the leaf.",
                             "[NC]The brown squirrel appear.",
                             "is very happy # She is very happy to see the squirrel again",
-                            "[NC]The brown squirrel takes the cracker and scampers up a tree. # She gives the squirrel cracker",
-                            "laughs and tucks the leaf into her book as a keepsake.",
-                            "ready to leave.",]),
+                            "[NC]The brown squirrel takes the cracker and scampers up a tree. # She gives the squirrel cracker"]),
                     "Japanese Anime","Only Using Textual Description",get_image_path_list('./examples/taylor'),768,768
                 ]
                 ],
@@ -782,6 +761,5 @@ with gr.Blocks(css=css) as demo:
     )
     gr.Markdown(article)
 
-    # demo.load(None, None, None, _js=load_js)
 
 demo.launch(server_name="0.0.0.0", share = True if use_va else False)
