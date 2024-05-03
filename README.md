@@ -23,7 +23,7 @@ https://github.com/HVision-NKU/StoryDiffusion/assets/49511209/81f187a0-1ec7-4252
 
 ### 🌠  **Key Features:**
 StoryDiffusion can create a magic story by generating consistent images and videos. Our work mainly has two parts: 
-1. Consistent self-attention for character-consistent image generation over long-range sequences. It is hot-pluggable and compatible with all SD1.5 and SDXL-based image diffusion models.
+1. Consistent self-attention for character-consistent image generation over long-range sequences. It is hot-pluggable and compatible with all SD1.5 and SDXL-based image diffusion models. For the current implementation, the user needs to provide at least 3 text prompts for the consistent self-attention module. We recommend at least 5 - 6 text prompts for better layout arrangement.
 2. Motion predictor for long-range video generation, which predicts motion between Condition Images in a compressed image semantic space, achieving larger motion prediction. 
 
 
