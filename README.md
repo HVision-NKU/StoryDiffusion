@@ -19,7 +19,11 @@ Official implementation of **[StoryDiffusion: Consistent Self-Attention for Long
 
 
 
-https://github.com/HVision-NKU/StoryDiffusion/assets/49511209/81f187a0-1ec7-4252-b475-0b681567a019
+
+https://github.com/HVision-NKU/StoryDiffusion/assets/49511209/d5b80f8f-09b0-48cd-8b10-daff46d422af
+
+
+
 
 ### 🌠  **Key Features:**
 StoryDiffusion can create a magic story by generating consistent images and videos. Our work mainly has two parts: 
