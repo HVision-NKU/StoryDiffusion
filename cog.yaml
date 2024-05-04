@@ -1,0 +1,23 @@
+# Configuration for Cog ⚙️
+# Reference: https://cog.run/yaml
+
+build:
+  gpu: true
+  system_packages:
+    - "libgl1-mesa-glx"
+    - "libglib2.0-0"
+  python_version: "3.11"
+  python_packages:
+    - xformers==0.0.20
+    - torch==2.0.1
+    - torchvision==0.15.2
+    - diffusers==0.25.0
+    - transformers==4.36.2
+    - gradio==3.48.0
+    - accelerate
+    - safetensors
+    - peft
+    - Pillow==9.5.0
+  run:
+    - curl -o /usr/local/bin/pget -L "https://github.com/replicate/pget/releases/download/v0.6.0/pget_linux_x86_64" && chmod +x /usr/local/bin/pget
+predict: "predict.py:Predictor"
