@@ -35,7 +35,6 @@ os.environ["no_proxy"] = "localhost,127.0.0.1,::1"
 STYLE_NAMES = list(styles.keys())
 DEFAULT_STYLE_NAME = "Japanese Anime"
 global models_dict
-use_va = False
 models_dict = {
    "Juggernaut": "RunDiffusion/Juggernaut-XL-v8",
    "RealVision": "SG161222/RealVisXL_V4.0" ,
@@ -43,7 +42,6 @@ models_dict = {
    "Unstable": "stablediffusionapi/sdxl-unstable-diffusers-y"
 }
 photomaker_path =  hf_hub_download(repo_id="TencentARC/PhotoMaker", filename="photomaker-v1.bin", repo_type="model")
-
 MAX_SEED = np.iinfo(np.int32).max
 def setup_seed(seed):
     torch.manual_seed(seed)
@@ -427,7 +425,7 @@ global sd_model_path
 pipe = None
 sd_model_path = models_dict["RealVision"]#"SG161222/RealVisXL_V4.0"
 ### LOAD Stable Diffusion Pipeline
-pipe = StableDiffusionXLPipeline.from_pretrained(sd_model_path, torch_dtype=torch.float16, use_safetensors=True if use_va else False)
+pipe = StableDiffusionXLPipeline.from_pretrained(sd_model_path, torch_dtype=torch.float16, use_safetensors = True)
 pipe = pipe.to(device)
 pipe.enable_freeu(s1=0.6, s2=0.4, b1=1.1, b2=1.2)
 # pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
@@ -508,7 +506,8 @@ def process_generation(_sd_type,_model_type,_upload_images, _num_steps,style_nam
         if _sd_type == "Unstable":
             use_safe_tensor = False
         # apply the style template
-        ##### load pipeline
+        ##### load pipe
+
         if _model_type == "original":
             pipe = StableDiffusionXLPipeline.from_pretrained(sd_model_path, torch_dtype=torch.float16, use_safetensors=use_safe_tensor)
             pipe = pipe.to(device)
@@ -762,4 +761,4 @@ with gr.Blocks(css=css) as demo:
     gr.Markdown(article)
 
 
-demo.launch(server_name="0.0.0.0", share = True if use_va else False)
+demo.launch(server_name="0.0.0.0", share = False)
