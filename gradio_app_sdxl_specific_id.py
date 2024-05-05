@@ -502,7 +502,6 @@ def process_generation(_sd_type,_model_type,_upload_images, _num_steps,style_nam
     sd_model_path = models_dict[_sd_type]
     use_safe_tensor = True
     if cur_model_type != _sd_type+"-"+_model_type+""+str(id_length_):
-        del pipe
         if _sd_type == "Unstable":
             use_safe_tensor = False
         # apply the style template
