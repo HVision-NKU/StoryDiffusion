@@ -119,7 +119,8 @@ python gradio_app_sdxl_specific_id.py
 
 
 
-
+## Contact
+If you have any questions, you are very welcome to email ypzhousdu@gmail.com and zhoudaquan21@gmail.com
 
    
 
