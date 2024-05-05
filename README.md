@@ -114,7 +114,7 @@ You can open the `Comic_Generation.ipynb` and run the code.
 Run the following command:
 
 ```python
-python gradio_app_sdxl.py
+python gradio_app_sdxl_specific_id.py
 ```
 
 
