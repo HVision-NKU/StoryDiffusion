@@ -122,7 +122,7 @@ Run the following command:
 python gradio_app_sdxl_specific_id.py
 ```
 
-We provide a low GPU Memory cost version, it was test on a machine with 24GB GPU-memory(Tesla A10) and 30GB RAM.
+We provide a low GPU Memory cost version, it was test on a machine with 24GB GPU-memory(Tesla A10) and 30GB RAM, and expcted work well with >20 G GPU-memory.
 
 ```python
 python gradio_app_sdxl_specific_id_low_vram.py
