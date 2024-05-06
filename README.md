@@ -10,10 +10,10 @@
 
 </div>
 
-<div align="center">
+<div align="left">
   
-  ### For results sharing and discussion: https://discord.gg/hSJZ35fV
-  ### For codebase and deployment-related discussion: https://discord.gg/2HFUHT9p
+  #### For results sharing and discussion: https://discord.gg/hSJZ35fV
+  #### For codebase and deployment-related discussion: https://discord.gg/2HFUHT9p
 </div>
 
 ---
