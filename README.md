@@ -10,6 +10,11 @@
 
 </div>
 
+<div align="left">
+  
+  #### For results sharing and discussion: https://discord.gg/hSJZ35fV
+  #### For codebase and deployment-related discussion: https://discord.gg/2HFUHT9p
+</div>
 
 ---
 
@@ -124,7 +129,8 @@ python gradio_app_sdxl_specific_id_low_vram.py
 ```
 
 
-
+## Contact
+If you have any questions, you are very welcome to email ypzhousdu@gmail.com and zhoudaquan21@gmail.com
 
    
 
