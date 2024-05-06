@@ -252,6 +252,18 @@ def cal_attn_mask_xl(total_length,id_length,sa32,sa64,height,width,device="cuda"
     return mask1024,mask4096
 
 
+def cal_attn_indice_xl_effcient_memory(total_length,id_length,sa32,sa64,height,width,device="cuda",dtype= torch.float16):
+    nums_1024 = (height // 32) * (width // 32)
+    nums_4096 = (height // 16) * (width // 16)
+    bool_matrix1024 = torch.rand((total_length,nums_1024),device = device,dtype = dtype) < sa32
+    bool_matrix4096 = torch.rand((total_length,nums_4096),device = device,dtype = dtype) < sa64
+    # 用nonzero()函数获取所有为True的值的索引
+    indices1024 = [torch.nonzero(bool_matrix1024[i], as_tuple=True)[0] for i in range(total_length)]
+    indices4096 = [torch.nonzero(bool_matrix4096[i], as_tuple=True)[0] for i in range(total_length)]
+
+    return indices1024,indices4096
+
+
 class AttnProcessor(nn.Module):
     r"""
     Default processor for performing attention-related computations.

@@ -1,7 +1,9 @@
 from email.policy import default
+from this import d
 import gradio as gr
 import numpy as np
 import torch
+import gc
 from huggingface_hub import hf_hub_download
 import requests
 import random
@@ -23,7 +25,7 @@ from diffusers import StableDiffusionXLPipeline
 from utils import PhotoMakerStableDiffusionXLPipeline
 from diffusers import DDIMScheduler
 import torch.nn.functional as F
-from utils.gradio_utils import cal_attn_mask_xl
+from utils.gradio_utils import cal_attn_mask_xl,cal_attn_indice_xl_effcient_memory
 import copy
 import os
 from diffusers.utils import load_image
@@ -96,15 +98,27 @@ class SpatialAttnProcessor2_0(torch.nn.Module):
         # un_cond_hidden_states, cond_hidden_states = hidden_states.chunk(2)
         # un_cond_hidden_states = self.__call2__(attn, un_cond_hidden_states,encoder_hidden_states,attention_mask,temb)
         # 生成一个0到1之间的随机数
-        global total_count,attn_count,cur_step,mask1024,mask4096
+        global total_count,attn_count,cur_step, indices1024,indices4096
         global sa32, sa64
         global write
         global height,width
+        if attn_count == 0 and cur_step == 0:
+            indices1024,indices4096 = cal_attn_indice_xl_effcient_memory(self.total_length,self.id_length,sa32,sa64,height,width, device=self.device, dtype= self.dtype)
         if write:
+            if hidden_states.shape[1] == (height//32) * (width//32):
+                indices = indices1024
+            else:
+                indices = indices4096
             # print(f"white:{cur_step}")
-            self.id_bank[cur_step] = [hidden_states[:self.id_length].clone(), hidden_states[self.id_length:].clone()]
+            total_batch_size,nums_token,channel = hidden_states.shape
+            img_nums = total_batch_size // 2
+            hidden_states = hidden_states.reshape(-1,img_nums,nums_token,channel)
+            self.id_bank[cur_step] = [hidden_states[:,img_ind,indices[img_ind],:].reshape(2,-1,channel).clone() for img_ind in range(img_nums)]
+            hidden_states = hidden_states.reshape(-1,nums_token,channel)
+            #self.id_bank[cur_step] = [hidden_states[:self.id_length].clone(), hidden_states[self.id_length:].clone()]
         else:
-            encoder_hidden_states = torch.cat((self.id_bank[cur_step][0].to(self.device),hidden_states[:1],self.id_bank[cur_step][1].to(self.device),hidden_states[1:]))
+            #encoder_hidden_states = torch.cat((self.id_bank[cur_step][0].to(self.device),self.id_bank[cur_step][1].to(self.device)))
+            encoder_arr = [tensor.to(self.device)  for tensor in self.id_bank[cur_step]]
         # 判断随机数是否大于0.5
         if cur_step <1:
             hidden_states = self.__call2__(attn, hidden_states,None,attention_mask,temb)
@@ -116,28 +130,36 @@ class SpatialAttnProcessor2_0(torch.nn.Module):
                 rand_num = 0.1
             # print(f"hidden state shape {hidden_states.shape[1]}")
             if random_number > rand_num:
-                # print("mask shape",mask1024.shape,mask4096.shape)
-                if not write:
-                    if hidden_states.shape[1] == (height//32) * (width//32):
-                        attention_mask = mask1024[mask1024.shape[0] // self.total_length * self.id_length:]
-                    else:
-                        attention_mask = mask4096[mask4096.shape[0] // self.total_length * self.id_length:]
+                if hidden_states.shape[1] == (height//32) * (width//32):
+                    indices = indices1024
                 else:
-                    # print(self.total_length,self.id_length,hidden_states.shape,(height//32) * (width//32))
-                    if hidden_states.shape[1] == (height//32) * (width//32):
-                        attention_mask = mask1024[:mask1024.shape[0] // self.total_length * self.id_length,:mask1024.shape[0] // self.total_length * self.id_length]
-                    else:
-                        attention_mask = mask4096[:mask4096.shape[0] // self.total_length * self.id_length,:mask4096.shape[0] // self.total_length * self.id_length]
-                   # print(attention_mask.shape)
+                    indices = indices4096
                 # print("before attention",hidden_states.shape,attention_mask.shape,encoder_hidden_states.shape if encoder_hidden_states is not None else "None")
-                hidden_states = self.__call1__(attn, hidden_states,encoder_hidden_states,attention_mask,temb)
+                if write:
+                    total_batch_size,nums_token,channel = hidden_states.shape
+                    img_nums = total_batch_size // 2
+                    hidden_states = hidden_states.reshape(-1,img_nums,nums_token,channel)
+                    encoder_arr = [hidden_states[:,img_ind,indices[img_ind],:].reshape(2,-1,channel) for img_ind in range(img_nums)]
+                    for img_ind in range(img_nums):
+                        encoder_hidden_states_tmp = torch.cat(encoder_arr[0:img_ind] + encoder_arr[img_ind+1:] + [hidden_states[:,img_ind,:,:]],dim=1)
+                        hidden_states[:,img_ind,:,:] = self.__call2__(attn, hidden_states[:,img_ind,:,:],encoder_hidden_states_tmp,None,temb)
+                else:
+                    _,nums_token,channel = hidden_states.shape
+                    # img_nums = total_batch_size // 2
+                    # encoder_hidden_states = encoder_hidden_states.reshape(-1,img_nums,nums_token,channel)
+                    hidden_states = hidden_states.reshape(2,-1,nums_token,channel)
+                    # print(len(indices))
+                    # encoder_arr = [encoder_hidden_states[:,img_ind,indices[img_ind],:].reshape(2,-1,channel) for img_ind in range(img_nums)]
+                    encoder_hidden_states_tmp = torch.cat(encoder_arr+[hidden_states[:,0,:,:]],dim=1)
+                    hidden_states[:,0,:,:] = self.__call2__(attn, hidden_states[:,0,:,:],encoder_hidden_states_tmp,None,temb)
+                hidden_states = hidden_states.reshape(-1,nums_token,channel)
             else:
                 hidden_states = self.__call2__(attn, hidden_states,None,attention_mask,temb)
         attn_count +=1
         if attn_count == total_count:
             attn_count = 0
             cur_step += 1
-            mask1024,mask4096 = cal_attn_mask_xl(self.total_length,self.id_length,sa32,sa64,height,width, device=self.device, dtype= self.dtype)
+            indices1024,indices4096 = cal_attn_indice_xl_effcient_memory(self.total_length,self.id_length,sa32,sa64,height,width, device=self.device, dtype= self.dtype)
 
         return hidden_states
     def __call1__(
@@ -147,6 +169,7 @@ class SpatialAttnProcessor2_0(torch.nn.Module):
         encoder_hidden_states=None,
         attention_mask=None,
         temb=None,
+        attn_indices = None,
     ):
         # print("hidden state shape",hidden_states.shape,self.id_length)
         residual = hidden_states
@@ -162,7 +185,6 @@ class SpatialAttnProcessor2_0(torch.nn.Module):
         total_batch_size,nums_token,channel = hidden_states.shape
         img_nums = total_batch_size//2
         hidden_states = hidden_states.view(-1,img_nums,nums_token,channel).reshape(-1,img_nums * nums_token,channel)
-
         batch_size, sequence_length, _ = hidden_states.shape
 
         if attn.group_norm is not None:
@@ -171,7 +193,7 @@ class SpatialAttnProcessor2_0(torch.nn.Module):
         query = attn.to_q(hidden_states)
 
         if encoder_hidden_states is None:
-            encoder_hidden_states = hidden_states  # B, N, C
+            encoder_hidden_states = hidden_states   # B, N, C
         else:
             encoder_hidden_states = encoder_hidden_states.view(-1,self.id_length+1,nums_token,channel).reshape(-1,(self.id_length+1) * nums_token,channel)
 
@@ -252,8 +274,8 @@ class SpatialAttnProcessor2_0(torch.nn.Module):
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states  # B, N, C
-        else:
-            encoder_hidden_states = encoder_hidden_states.view(-1,self.id_length+1,sequence_length,channel).reshape(-1,(self.id_length+1) * sequence_length,channel)
+        # else:
+        #     encoder_hidden_states = encoder_hidden_states.view(-1,self.id_length+1,sequence_length,channel).reshape(-1,(self.id_length+1) * sequence_length,channel)
 
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
@@ -423,14 +445,17 @@ width = 768
 global pipe
 global sd_model_path
 pipe = None
-sd_model_path = models_dict["RealVision"]#"SG161222/RealVisXL_V4.0"
+sd_model_path = models_dict["Unstable"]#"SG161222/RealVisXL_V4.0"
 ### LOAD Stable Diffusion Pipeline
-pipe = StableDiffusionXLPipeline.from_pretrained(sd_model_path, torch_dtype=torch.float16, use_safetensors = True)
+pipe = StableDiffusionXLPipeline.from_pretrained(sd_model_path, torch_dtype=torch.float16, use_safetensors = False)
 pipe = pipe.to(device)
 pipe.enable_freeu(s1=0.6, s2=0.4, b1=1.1, b2=1.2)
 # pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
 pipe.scheduler.set_timesteps(50)
+pipe.enable_vae_slicing()
+pipe.enable_model_cpu_offload()
 unet = pipe.unet
+cur_model_type = "Unstable"+"-"+"original"
 ### Insert PairedAttention
 for name in unet.attn_processors.keys():
     cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
@@ -501,12 +526,22 @@ def process_generation(_sd_type,_model_type,_upload_images, _num_steps,style_nam
     global sd_model_path,models_dict
     sd_model_path = models_dict[_sd_type]
     use_safe_tensor = True
-    if cur_model_type != _sd_type+"-"+_model_type+""+str(id_length_):
+    for attn_processor in pipe.unet.attn_processors.values():
+        if isinstance(attn_processor, SpatialAttnProcessor2_0):
+            for values in attn_processor.id_bank.values():
+                del values
+            attn_processor.id_bank = {}
+            attn_processor.id_length = id_length
+            attn_processor.total_length =  id_length + 1
+    gc.collect()
+    if cur_model_type != _sd_type+"-"+_model_type:
         if _sd_type == "Unstable":
             use_safe_tensor = False
         # apply the style template
         ##### load pipe
-
+        del pipe
+        gc.collect()
+        torch.cuda.empty_cache()
         if _model_type == "original":
             pipe = StableDiffusionXLPipeline.from_pretrained(sd_model_path, torch_dtype=torch.float16, use_safetensors=use_safe_tensor)
             pipe = pipe.to(device)
@@ -528,10 +563,12 @@ def process_generation(_sd_type,_model_type,_upload_images, _num_steps,style_nam
         ##### ########################
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe.enable_freeu(s1=0.6, s2=0.4, b1=1.1, b2=1.2)
-        cur_model_type = _sd_type+"-"+_model_type+""+str(id_length_)
+        cur_model_type = _sd_type+"-"+_model_type
+        pipe.enable_vae_slicing()
+        pipe.enable_model_cpu_offload()
     else:
         unet = pipe.unet
-        unet.set_attn_processor(copy.deepcopy(attn_procs))
+        # unet.set_attn_processor(copy.deepcopy(attn_procs))
     if _model_type != "original":
         input_id_images = []
         for img in _upload_images:
