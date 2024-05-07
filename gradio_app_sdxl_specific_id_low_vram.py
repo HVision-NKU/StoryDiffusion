@@ -583,6 +583,12 @@ def process_generation(_sd_type,_model_type,_upload_images, _num_steps,style_nam
     sa32, sa64 =  sa32_, sa64_
     id_length = id_length_
     clipped_prompts = prompts[:]
+    nc_indexs = []
+    for ind,prompt in enumerate(clipped_prompts):
+        if "[NC]"  in prompt:
+            nc_indexs.append(ind)
+            if ind < id_length:
+                raise gr.Error(f"The first {id_length} row is id prompts, cannot use [NC]!")
     prompts = [general_prompt + "," + prompt if "[NC]" not in prompt else prompt.replace("[NC]","")  for prompt in clipped_prompts]
     prompts = [prompt.rpartition('#')[0] if "#" in prompt else prompt for prompt in prompts]
     print(prompts)
@@ -606,14 +612,14 @@ def process_generation(_sd_type,_model_type,_upload_images, _num_steps,style_nam
     yield total_results
     real_images = []
     write = False
-    for real_prompt in real_prompts:
+    for ind,real_prompt in enumerate(real_prompts):
         setup_seed(seed_)
         cur_step = 0
         real_prompt = apply_style_positive(style_name, real_prompt)
         if _model_type == "original":   
             real_images.append(pipe(real_prompt,  num_inference_steps=_num_steps, guidance_scale=guidance_scale,  height = height, width = width,negative_prompt = negative_prompt,generator = generator).images[0])
         elif _model_type == "Photomaker":      
-            real_images.append(pipe(real_prompt, input_id_images=input_id_images, num_inference_steps=_num_steps, guidance_scale=guidance_scale,  start_merge_step = start_merge_step, height = height, width = width,negative_prompt = negative_prompt,generator = generator).images[0])
+            real_images.append(pipe(real_prompt, input_id_images=input_id_images, num_inference_steps=_num_steps, guidance_scale=guidance_scale,  start_merge_step = start_merge_step, height = height, width = width,negative_prompt = negative_prompt,generator = generator,nc_flag = True if ind+id_length in nc_indexs else False).images[0])
         else:
             raise NotImplementedError("You should choice between original and Photomaker!",f"But you choice {_model_type}")
         total_results = [real_images[-1]] + total_results
@@ -751,6 +757,19 @@ with gr.Blocks(css=css) as demo:
                             "in the house filled with  treasure, laughing, at night #He is overjoyed inside the house."
                             ]),
                             "Comic book","Only Using Textual Description",get_image_path_list('./examples/taylor'),768,768
+            ],
+            [0,0.5,0.5,2,"a man, wearing black suit",
+                "bad anatomy, bad hands, missing fingers, extra fingers, three hands, three legs, bad arms, missing legs, missing arms, poorly drawn face, bad face, fused face, cloned face, three crus, fused feet, fused thigh, extra crus, ugly fingers, horn, cartoon, cg, 3d, unreal, animate, amputation, disconnected limbs",
+                array2string(["at home, read new paper #at home, The newspaper says there is a treasure house in the forest.",
+                            "on the road, near the forest",
+                            "[NC] The car on the road, near the forest #He drives to the forest in search of treasure.",
+                            "[NC]A tiger appeared in the forest, at night ",
+                            "very frightened, open mouth, in the forest, at night",
+                            "running very fast, in the forest, at night",
+                            "[NC] A house in the forest, at night #Suddenly, he discovers the treasure house!",
+                            "in the house filled with  treasure, laughing, at night #He is overjoyed inside the house."
+                            ]),
+                            "Comic book","Only Using Textual Description",get_image_path_list('./examples/Robert'),1024,1024
             ],
             [1,0.5,0.5,3,"a woman img, wearing a white T-shirt, blue loose hair",
                    "bad anatomy, bad hands, missing fingers, extra fingers, three hands, three legs, bad arms, missing legs, missing arms, poorly drawn face, bad face, fused face, cloned face, three crus, fused feet, fused thigh, extra crus, ugly fingers, horn, cartoon, cg, 3d, unreal, animate, amputation, disconnected limbs",
