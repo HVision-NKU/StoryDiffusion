@@ -93,8 +93,7 @@ def add_caption(image, text, position = "bottom-mid",  font = None, text_color= 
 def get_comic(images,types = "4panel",captions = [],font = None,pad_image = None):
     if pad_image == None:
         pad_image = Image.open("./images/pad_images.png")
-    if font == None:
-        font = ImageFont.truetype("./fonts/Inkfree.ttf", int(30 * images[0].size[1] / 1024))
+
     if types == "No typesetting (default)":
         return images
     elif types == "Four Pannel":
