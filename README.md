@@ -87,7 +87,7 @@ Our Image-to-Video model can generate a video by providing a sequence of user-in
 
 
 ## 🚩 **TODO/Updates**
-- [x] Commic Results of StoryDiffusion.
+- [x] Comic Results of StoryDiffusion.
 - [x] Video Results of StoryDiffusion.
 - [x] Source code of Comic Generation
 - [x] Source code of gradio demo
@@ -122,7 +122,7 @@ Run the following command:
 python gradio_app_sdxl_specific_id.py
 ```
 
-We provide a low GPU Memory cost version, it was test on a machine with 24GB GPU-memory(Tesla A10) and 30GB RAM, and expcted work well with >20 G GPU-memory.
+We provide a low GPU Memory cost version, it was tested on a machine with 24GB GPU-memory(Tesla A10) and 30GB RAM, and expected work well with >20 G GPU-memory.
 
 ```python
 python gradio_app_sdxl_specific_id_low_vram.py
