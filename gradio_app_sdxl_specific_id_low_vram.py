@@ -510,7 +510,7 @@ def change_visiale_by_model_type(_model_type):
 
 
 ######### Image Generation ##############
-def process_generation(_sd_type,_model_type,_upload_images, _num_steps,style_name, _Ip_Adapter_Strength ,_style_strength_ratio, guidance_scale, seed_,  sa32_, sa64_, id_length_,  general_prompt, negative_prompt,prompt_array,G_height,G_width,_comic_type):
+def process_generation(_sd_type,_model_type,_upload_images, _num_steps,style_name, _Ip_Adapter_Strength ,_style_strength_ratio, guidance_scale, seed_,  sa32_, sa64_, id_length_,  general_prompt, negative_prompt,prompt_array,G_height,G_width,_comic_type, font_choice): # Corrected font_choice usage
     _model_type = "Photomaker" if _model_type == "Using Ref Images" else "original"
     if _model_type == "Photomaker" and "img" not in general_prompt:
         raise gr.Error("Please add the triger word \" img \"  behind the class word you want to customize, such as: man img or woman img")
@@ -629,7 +629,11 @@ def process_generation(_sd_type,_model_type,_upload_images, _num_steps,style_nam
         captions = [caption.replace("[NC]","") for caption in captions]
         captions = [caption.split('#')[-1] if "#" in caption else caption for caption in captions]
         from PIL import ImageFont
-        total_results = get_comic(id_images + real_images, _comic_type,captions= captions,font=ImageFont.truetype("./fonts/Inkfree.ttf", int(45))) + total_results
+        
+        font_path = os.path.join("fonts", font_choice)
+        print(f"Attempting to load font from path: {font_path}")
+        font = ImageFont.truetype(font_path, int(45))
+    total_results = get_comic(id_images + real_images, _comic_type, captions=captions, font=font) + total_results
     yield total_results
 
 
@@ -678,6 +682,7 @@ with gr.Blocks(css=css) as demo:
                 style = gr.Dropdown(label="Style template", choices=STYLE_NAMES, value=DEFAULT_STYLE_NAME)
                 prompt_array = gr.Textbox(lines = 3,value='', label="(3) Comic Description (each line corresponds to a frame).", interactive=True)
                 with gr.Accordion("(4) Tune the hyperparameters", open=True):
+                    font_choice = gr.Dropdown(label="Select Font", choices=[f for f in os.listdir("./fonts") if f.endswith('.ttf')], value="Inkfree.ttf", info="Select font for the final slide.", interactive=True)
                     sa32_ = gr.Slider(label=" (The degree of Paired Attention at 32 x 32 self-attention layers) ", minimum=0, maximum=1., value=0.5, step=0.1)
                     sa64_ = gr.Slider(label=" (The degree of Paired Attention at 64 x 64 self-attention layers) ", minimum=0, maximum=1., value=0.5, step=0.1)
                     id_length_ = gr.Slider(label= "Number of id images in total images" , minimum=2, maximum=4, value=2, step=1)
@@ -738,9 +743,9 @@ with gr.Blocks(css=css) as demo:
     files.upload(fn=swap_to_gallery, inputs=files, outputs=[uploaded_files, clear_button, files])
     remove_and_reupload.click(fn=remove_back_to_files, outputs=[uploaded_files, clear_button, files])
 
-    final_run_btn.click(fn=set_text_unfinished, outputs = generated_information
-    ).then(process_generation, inputs=[sd_type,model_type,files, num_steps,style, Ip_Adapter_Strength,style_strength_ratio, guidance_scale, seed_, sa32_, sa64_, id_length_, general_prompt, negative_prompt, prompt_array,G_height,G_width,comic_type], outputs=out_image
-    ).then(fn=set_text_finished,outputs = generated_information)
+    final_run_btn.click(fn=set_text_unfinished, outputs=generated_information
+    ).then(process_generation, inputs=[sd_type,model_type,files, num_steps,style, Ip_Adapter_Strength,style_strength_ratio, guidance_scale, seed_, sa32_, sa64_, id_length_, general_prompt, negative_prompt, prompt_array,G_height,G_width,comic_type, font_choice], outputs=out_image
+    ).then(fn=set_text_finished,outputs=generated_information)
 
 
     gr.Examples(
