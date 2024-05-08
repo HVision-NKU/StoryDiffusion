@@ -1,33 +1,27 @@
 from email.policy import default
+from this import d
 import gradio as gr
 import numpy as np
-import spaces
 import torch
-import requests
+import gc
+from huggingface_hub import hf_hub_download
 import random
 import os
-import sys
-import pickle
-from PIL import Image
+import argparse
 from tqdm.auto import tqdm
-from datetime import datetime
 from utils.gradio_utils import is_torch2_available
 if is_torch2_available():
     from utils.gradio_utils import \
         AttnProcessor2_0 as AttnProcessor
-    # from utils.gradio_utils import SpatialAttnProcessor2_0
 else:
     from utils.gradio_utils  import AttnProcessor
-
-import diffusers
 from diffusers import StableDiffusionXLPipeline
 from utils import PhotoMakerStableDiffusionXLPipeline
 from diffusers import DDIMScheduler
 import torch.nn.functional as F
-from utils.gradio_utils import cal_attn_mask_xl
+from utils.gradio_utils import cal_attn_mask_xl,cal_attn_indice_xl_effcient_memory
 import copy
 import os
-from huggingface_hub import hf_hub_download
 from diffusers.utils import load_image
 from utils.utils import get_comic
 from utils.style_template import styles
@@ -37,11 +31,11 @@ os.environ["no_proxy"] = "localhost,127.0.0.1,::1"
 STYLE_NAMES = list(styles.keys())
 DEFAULT_STYLE_NAME = "Japanese Anime"
 global models_dict
-use_va = True
+mode = "lowram"
 models_dict = {
-#    "Juggernaut": "RunDiffusion/Juggernaut-XL-v8",
-#    "RealVision": "SG161222/RealVisXL_V4.0" ,
-#    "SDXL":"stabilityai/stable-diffusion-xl-base-1.0" ,
+#   "Juggernaut": "RunDiffusion/Juggernaut-XL-v8", ### Not support now Juggernaut
+   "RealVision": "SG161222/RealVisXL_V4.0" ,
+   "SDXL": "stabilityai/stable-diffusion-xl-base-1.0" ,
    "Unstable": "stablediffusionapi/sdxl-unstable-diffusers-y"
 }
 photomaker_path =  hf_hub_download(repo_id="TencentARC/PhotoMaker", filename="photomaker-v1.bin", repo_type="model")
@@ -99,18 +93,47 @@ class SpatialAttnProcessor2_0(torch.nn.Module):
         # un_cond_hidden_states, cond_hidden_states = hidden_states.chunk(2)
         # un_cond_hidden_states = self.__call2__(attn, un_cond_hidden_states,encoder_hidden_states,attention_mask,temb)
         # 生成一个0到1之间的随机数
-        global total_count,attn_count,cur_step,mask1024,mask4096
+        global total_count,attn_count,cur_step
+        global mode
+        
+        if mode == "lowram":
+            #print (f"lowram1")
+            global indices1024, indices4096
+        if mode == "normal":
+            global mask1024, mask4096
         global sa32, sa64
         global write
         global height,width
+
+        if mode == "lowram":
+            #print (f"lowram2")
+            if attn_count == 0 and cur_step == 0:
+                indices1024,indices4096 = cal_attn_indice_xl_effcient_memory(self.total_length,self.id_length,sa32,sa64,height,width, device=self.device, dtype= self.dtype)
         if write:
-            # print(f"white:{cur_step}")
-            self.id_bank[cur_step] = [hidden_states[:self.id_length], hidden_states[self.id_length:]]
+            if mode == "lowram":
+                #print (f"lowram3")
+                if hidden_states.shape[1] == (height//32) * (width//32):
+                    indices = indices1024
+                else:
+                    indices = indices4096
+                # print(f"white:{cur_step}")
+                total_batch_size,nums_token,channel = hidden_states.shape
+                img_nums = total_batch_size // 2
+                hidden_states = hidden_states.reshape(-1,img_nums,nums_token,channel)
+                self.id_bank[cur_step] = [hidden_states[:,img_ind,indices[img_ind],:].reshape(2,-1,channel).clone() for img_ind in range(img_nums)]
+                hidden_states = hidden_states.reshape(-1,nums_token,channel)
+            if mode == "normal":
+                self.id_bank[cur_step] = [hidden_states[:self.id_length].clone(), hidden_states[self.id_length:].clone()]
         else:
-            encoder_hidden_states = torch.cat((self.id_bank[cur_step][0].to(self.device),hidden_states[:1],self.id_bank[cur_step][1].to(self.device),hidden_states[1:]))
+            if mode == "lowram":
+                #print (f"lowram4")
+                #encoder_hidden_states = torch.cat((self.id_bank[cur_step][0].to(self.device),self.id_bank[cur_step][1].to(self.device)))
+                encoder_arr = [tensor.to(self.device)  for tensor in self.id_bank[cur_step]]
+            if mode == "normal":
+                encoder_hidden_states = torch.cat((self.id_bank[cur_step][0].to(self.device),hidden_states[:1],self.id_bank[cur_step][1].to(self.device),hidden_states[1:]))
         # 判断随机数是否大于0.5
-        if cur_step <5:
-            hidden_states = self.__call2__(attn, hidden_states,encoder_hidden_states,attention_mask,temb)
+        if cur_step <1:
+            hidden_states = self.__call2__(attn, hidden_states,None,attention_mask,temb)
         else:   # 256 1024 4096
             random_number = random.random()
             if cur_step <20:
@@ -119,28 +142,58 @@ class SpatialAttnProcessor2_0(torch.nn.Module):
                 rand_num = 0.1
             # print(f"hidden state shape {hidden_states.shape[1]}")
             if random_number > rand_num:
-                # print("mask shape",mask1024.shape,mask4096.shape)
-                if not write:
+                if mode == "lowram":
+                    #print (f"lowram5")
                     if hidden_states.shape[1] == (height//32) * (width//32):
-                        attention_mask = mask1024[mask1024.shape[0] // self.total_length * self.id_length:]
+                        indices = indices1024
                     else:
-                        attention_mask = mask4096[mask4096.shape[0] // self.total_length * self.id_length:]
-                else:
-                    # print(self.total_length,self.id_length,hidden_states.shape,(height//32) * (width//32))
-                    if hidden_states.shape[1] == (height//32) * (width//32):
-                        attention_mask = mask1024[:mask1024.shape[0] // self.total_length * self.id_length,:mask1024.shape[0] // self.total_length * self.id_length]
+                        indices = indices4096
+                    if write:
+                        total_batch_size,nums_token,channel = hidden_states.shape
+                        img_nums = total_batch_size // 2
+                        hidden_states = hidden_states.reshape(-1,img_nums,nums_token,channel)
+                        encoder_arr = [hidden_states[:,img_ind,indices[img_ind],:].reshape(2,-1,channel) for img_ind in range(img_nums)]
+                        for img_ind in range(img_nums):
+                            encoder_hidden_states_tmp = torch.cat(encoder_arr[0:img_ind] + encoder_arr[img_ind+1:] + [hidden_states[:,img_ind,:,:]],dim=1)
+                            hidden_states[:,img_ind,:,:] = self.__call2__(attn, hidden_states[:,img_ind,:,:],encoder_hidden_states_tmp,None,temb)
                     else:
-                        attention_mask = mask4096[:mask4096.shape[0] // self.total_length * self.id_length,:mask4096.shape[0] // self.total_length * self.id_length]
-                   # print(attention_mask.shape)
-                # print("before attention",hidden_states.shape,attention_mask.shape,encoder_hidden_states.shape if encoder_hidden_states is not None else "None")
+                        _,nums_token,channel = hidden_states.shape
+                        # img_nums = total_batch_size // 2
+                        # encoder_hidden_states = encoder_hidden_states.reshape(-1,img_nums,nums_token,channel)
+                        hidden_states = hidden_states.reshape(2,-1,nums_token,channel)
+                        # print(len(indices))
+                        # encoder_arr = [encoder_hidden_states[:,img_ind,indices[img_ind],:].reshape(2,-1,channel) for img_ind in range(img_nums)]
+                        encoder_hidden_states_tmp = torch.cat(encoder_arr+[hidden_states[:,0,:,:]],dim=1)
+                        hidden_states[:,0,:,:] = self.__call2__(attn, hidden_states[:,0,:,:],encoder_hidden_states_tmp,None,temb)
+                    hidden_states = hidden_states.reshape(-1,nums_token,channel)
                 hidden_states = self.__call1__(attn, hidden_states,encoder_hidden_states,attention_mask,temb)
+               
+                if mode == "normal":
+                    if not write:
+                        if hidden_states.shape[1] == (height//32) * (width//32):
+                            attention_mask = mask1024[mask1024.shape[0] // self.total_length * self.id_length:]
+                        else:
+                            attention_mask = mask4096[mask4096.shape[0] // self.total_length * self.id_length:]
+                    else:
+                        # print(self.total_length,self.id_length,hidden_states.shape,(height//32) * (width//32))
+                        if hidden_states.shape[1] == (height//32) * (width//32):
+                            attention_mask = mask1024[:mask1024.shape[0] // self.total_length * self.id_length,:mask1024.shape[0] // self.total_length * self.id_length]
+                        else:
+                            attention_mask = mask4096[:mask4096.shape[0] // self.total_length * self.id_length,:mask4096.shape[0] // self.total_length * self.id_length]
+                    # print(attention_mask.shape)
+                    # print("before attention",hidden_states.shape,attention_mask.shape,encoder_hidden_states.shape if encoder_hidden_states is not None else "None")
+                    hidden_states = self.__call1__(attn, hidden_states,encoder_hidden_states,attention_mask,temb)
             else:
                 hidden_states = self.__call2__(attn, hidden_states,None,attention_mask,temb)
         attn_count +=1
         if attn_count == total_count:
             attn_count = 0
             cur_step += 1
-            mask1024,mask4096 = cal_attn_mask_xl(self.total_length,self.id_length,sa32,sa64,height,width, device=self.device, dtype= self.dtype)
+            if mode == "lowram":
+                #print (f"lowram8")
+                indices1024,indices4096 = cal_attn_indice_xl_effcient_memory(self.total_length,self.id_length,sa32,sa64,height,width, device=self.device, dtype= self.dtype)
+            if mode == "normal":
+                mask1024,mask4096 = cal_attn_mask_xl(self.total_length,self.id_length,sa32,sa64,height,width, device=self.device, dtype= self.dtype)
 
         return hidden_states
     def __call1__(
@@ -150,6 +203,7 @@ class SpatialAttnProcessor2_0(torch.nn.Module):
         encoder_hidden_states=None,
         attention_mask=None,
         temb=None,
+        attn_indices = None,
     ):
         # print("hidden state shape",hidden_states.shape,self.id_length)
         residual = hidden_states
@@ -165,7 +219,6 @@ class SpatialAttnProcessor2_0(torch.nn.Module):
         total_batch_size,nums_token,channel = hidden_states.shape
         img_nums = total_batch_size//2
         hidden_states = hidden_states.view(-1,img_nums,nums_token,channel).reshape(-1,img_nums * nums_token,channel)
-
         batch_size, sequence_length, _ = hidden_states.shape
 
         if attn.group_norm is not None:
@@ -174,9 +227,10 @@ class SpatialAttnProcessor2_0(torch.nn.Module):
         query = attn.to_q(hidden_states)
 
         if encoder_hidden_states is None:
-            encoder_hidden_states = hidden_states  # B, N, C
+            encoder_hidden_states = hidden_states   # B, N, C
         else:
-            encoder_hidden_states = encoder_hidden_states.view(-1,self.id_length+1,nums_token,channel).reshape(-1,(self.id_length+1) * nums_token,channel)
+            if mode == "normal":
+                encoder_hidden_states = encoder_hidden_states.view(-1,self.id_length+1,nums_token,channel).reshape(-1,(self.id_length+1) * nums_token,channel)
 
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
@@ -241,6 +295,7 @@ class SpatialAttnProcessor2_0(torch.nn.Module):
         batch_size, sequence_length, channel = (
             hidden_states.shape
         )
+        
         # print(hidden_states.shape)
         if attention_mask is not None:
             attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
@@ -256,7 +311,10 @@ class SpatialAttnProcessor2_0(torch.nn.Module):
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states  # B, N, C
         else:
-            encoder_hidden_states = encoder_hidden_states.view(-1,self.id_length+1,sequence_length,channel).reshape(-1,(self.id_length+1) * sequence_length,channel)
+            if mode == "normal":
+                encoder_hidden_states = encoder_hidden_states.view(-1,self.id_length+1,sequence_length,channel).reshape(-1,(self.id_length+1) * sequence_length,channel)
+            else:
+                pass
 
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
@@ -294,8 +352,7 @@ class SpatialAttnProcessor2_0(torch.nn.Module):
         return hidden_states
 
 def set_attention_processor(unet,id_length,is_ipadapter = False):
-    global total_count
-    total_count = 0
+    global attn_procs
     attn_procs = {}
     for name in unet.attn_processors.keys():
         cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
@@ -310,7 +367,6 @@ def set_attention_processor(unet,id_length,is_ipadapter = False):
         if cross_attention_dim is None:
             if name.startswith("up_blocks") :
                 attn_procs[name] = SpatialAttnProcessor2_0(id_length = id_length)
-                total_count +=1
             else:    
                 attn_procs[name] = AttnProcessor()
         else:
@@ -325,8 +381,6 @@ def set_attention_processor(unet,id_length,is_ipadapter = False):
                 attn_procs[name] = AttnProcessor()
 
     unet.set_attn_processor(copy.deepcopy(attn_procs))
-    print("successsfully load paired self-attention")
-    print(f"number of the processor : {total_count}")
 #################################################
 #################################################
 canvas_html = "<div id='canvas-root' style='max-width:400px; margin: 0 auto'></div>"
@@ -402,8 +456,8 @@ version = r"""
 
 <h5 >1. Support image ref image. (Cartoon Ref image is not support now)</h5>
 <h5 >2. Support Typesetting Style and Captioning.(By default, the prompt is used as the caption for each image. If you need to change the caption, add a # at the end of each line. Only the part after the # will be added as a caption to the image.)</h5>
-<h5 >3. [NC]symbol (The [NC] symbol is used as a flag to indicate that no characters should be present in the generated scene images. If you want do that, prepend the "[NC]" at the beginning of the line. For example, to generate a scene of falling leaves without any character, write: "[NC] The leaves are falling."),Currently, support is only using Textual Description</h5>
-<h5 align="center">Tips: Not Ready Now! Just Test</h5>
+<h5 >3. [NC]symbol (The [NC] symbol is used as a flag to indicate that no characters should be present in the generated scene images. If you want do that, prepend the "[NC]" at the beginning of the line. For example, to generate a scene of falling leaves without any character, write: "[NC] The leaves are falling.")</h5>
+<h5 align="center">Tips: </h4>
 """
 #################################################
 global attn_count, total_count, id_length, total_length,cur_step, cur_model_type
@@ -427,28 +481,55 @@ sa64 = 0.5
 height = 768
 width = 768
 ###
+global pipe
 global sd_model_path
-sd_model_path = models_dict["Unstable"]#"SG161222/RealVisXL_V4.0"
-use_safetensors= False
-### LOAD Stable Diffusion Pipeline
-pipe1 = StableDiffusionXLPipeline.from_pretrained(sd_model_path, torch_dtype=torch.float16, use_safetensors= use_safetensors)
-pipe1 = pipe1.to("cuda")
-pipe1.enable_freeu(s1=0.6, s2=0.4, b1=1.1, b2=1.2)
+# global mode
+pipe = None
+
+if mode == "normal":
+    use_safetensors = True
+    print (f"normal {use_safetensors}")
+    sd_model_path = models_dict["RealVision"]#"SG161222/RealVisXL_V4.0"
+if mode == "lowram":
+    use_safetensors = False
+    print (f"lowram {use_safetensors}")
+    sd_model_path = models_dict["Unstable"]
+
+pipe = StableDiffusionXLPipeline.from_pretrained(sd_model_path, torch_dtype=torch.float16, use_safetensors=use_safetensors)
+pipe = pipe.to(device)
+pipe.enable_freeu(s1=0.6, s2=0.4, b1=1.1, b2=1.2)
 # pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
-pipe1.scheduler.set_timesteps(50)
-### 
-pipe2 = PhotoMakerStableDiffusionXLPipeline.from_pretrained(
-    sd_model_path, torch_dtype=torch.float16, use_safetensors=use_safetensors)
-pipe2 = pipe2.to("cuda")
-pipe2.load_photomaker_adapter(
-    os.path.dirname(photomaker_path),
-    subfolder="",
-    weight_name=os.path.basename(photomaker_path),
-    trigger_word="img"  # define the trigger word
-)
-pipe2 = pipe2.to("cuda")
-pipe2.enable_freeu(s1=0.6, s2=0.4, b1=1.1, b2=1.2)
-pipe2.fuse_lora()
+pipe.scheduler.set_timesteps(50)
+
+if mode == "lowram":
+    #print (f"lowram11")
+    pipe.enable_vae_slicing()
+    pipe.enable_model_cpu_offload()
+    cur_model_type = "Unstable"+"-"+"original"
+#======
+unet = pipe.unet
+
+### Insert PairedAttention
+for name in unet.attn_processors.keys():
+    cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
+    if name.startswith("mid_block"):
+        hidden_size = unet.config.block_out_channels[-1]
+    elif name.startswith("up_blocks"):
+        block_id = int(name[len("up_blocks.")])
+        hidden_size = list(reversed(unet.config.block_out_channels))[block_id]
+    elif name.startswith("down_blocks"):
+        block_id = int(name[len("down_blocks.")])
+        hidden_size = unet.config.block_out_channels[block_id]
+    if cross_attention_dim is None and (name.startswith("up_blocks") ) :
+        attn_procs[name] =  SpatialAttnProcessor2_0(id_length = id_length)
+        total_count +=1
+    else:
+        attn_procs[name] = AttnProcessor()
+print("successsfully load paired self-attention")
+print(f"number of the processor : {total_count}")
+unet.set_attn_processor(copy.deepcopy(attn_procs))
+global mask1024,mask4096
+mask1024, mask4096 = cal_attn_mask_xl(total_length,id_length,sa32,sa64,height,width,device=device,dtype= torch.float16)
 
 ######### Gradio Fuction #############
 
@@ -482,35 +563,65 @@ def change_visiale_by_model_type(_model_type):
 
 
 ######### Image Generation ##############
-@spaces.GPU
-def process_generation(_sd_type,_model_type,_upload_images, _num_steps,style_name, _Ip_Adapter_Strength ,_style_strength_ratio, guidance_scale, seed_,  sa32_, sa64_, id_length_,  general_prompt, negative_prompt,prompt_array,G_height,G_width,_comic_type):
+def process_generation(_sd_type,_model_type,_upload_images, _num_steps,style_name, _Ip_Adapter_Strength ,_style_strength_ratio, guidance_scale, seed_,  sa32_, sa64_, id_length_,  general_prompt, negative_prompt,prompt_array,G_height,G_width,_comic_type, font_choice): # Corrected font_choice usage
     _model_type = "Photomaker" if _model_type == "Using Ref Images" else "original"
     if _model_type == "Photomaker" and "img" not in general_prompt:
         raise gr.Error("Please add the triger word \" img \"  behind the class word you want to customize, such as: man img or woman img")
     if _upload_images is None and _model_type != "original":
         raise gr.Error(f"Cannot find any input face image!")
-    global sa32, sa64,id_length,total_length,attn_procs,unet,cur_model_type,device
+    global sa32, sa64,id_length,total_length,attn_procs,unet,cur_model_type
     global write
     global cur_step,attn_count
     global height,width
     height = G_height
     width = G_width
-    global pipe1,pipe2
+    global pipe
     global sd_model_path,models_dict
     sd_model_path = models_dict[_sd_type]
     use_safe_tensor = True
-    if _model_type == "original":
-        pipe = pipe1
-        set_attention_processor(pipe.unet,id_length_,is_ipadapter = False)
-    elif _model_type == "Photomaker":
-        pipe = pipe2
-        set_attention_processor(pipe.unet,id_length_,is_ipadapter = False)
-    else:
-        raise NotImplementedError("You should choice between original and Photomaker!",f"But you choice {_model_type}")
+    for attn_processor in pipe.unet.attn_processors.values():
+        if isinstance(attn_processor, SpatialAttnProcessor2_0):
+            for values in attn_processor.id_bank.values():
+                del values
+            attn_processor.id_bank = {}
+            attn_processor.id_length = id_length
+            attn_processor.total_length =  id_length + 1
+    gc.collect()
+    if cur_model_type != _sd_type+"-"+_model_type:
+        if _sd_type in ["Unstable","Juggernaut"]:
+            use_safe_tensor = False
+        # apply the style template
+        ##### load pipe
+        del pipe
+        gc.collect()
+        torch.cuda.empty_cache()
+        if _model_type == "original":
+            pipe = StableDiffusionXLPipeline.from_pretrained(sd_model_path, torch_dtype=torch.float16, use_safetensors=use_safe_tensor)
+            pipe = pipe.to(device)
+            set_attention_processor(pipe.unet,id_length_,is_ipadapter = False)
+        elif _model_type == "Photomaker":
+            pipe = PhotoMakerStableDiffusionXLPipeline.from_pretrained(
+                sd_model_path, torch_dtype=torch.float16, use_safetensors=use_safe_tensor)
+            pipe = pipe.to(device)
+            pipe.load_photomaker_adapter(
+                os.path.dirname(photomaker_path),
+                subfolder="",
+                weight_name=os.path.basename(photomaker_path),
+                trigger_word="img"  # define the trigger word
+            )
+            pipe.fuse_lora()
+            set_attention_processor(pipe.unet,id_length_,is_ipadapter = False)
+        else:
+            raise NotImplementedError("You should choice between original and Photomaker!",f"But you choice {_model_type}")
         ##### ########################
-    pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
-    pipe.enable_freeu(s1=0.6, s2=0.4, b1=1.1, b2=1.2)
-    cur_model_type = _sd_type+"-"+_model_type+""+str(id_length_)
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe.enable_freeu(s1=0.6, s2=0.4, b1=1.1, b2=1.2)
+        cur_model_type = _sd_type+"-"+_model_type
+        pipe.enable_vae_slicing()
+        pipe.enable_model_cpu_offload()
+    else:
+        unet = pipe.unet
+        # unet.set_attn_processor(copy.deepcopy(attn_procs))
     if _model_type != "original":
         input_id_images = []
         for img in _upload_images:
@@ -525,6 +636,12 @@ def process_generation(_sd_type,_model_type,_upload_images, _num_steps,style_nam
     sa32, sa64 =  sa32_, sa64_
     id_length = id_length_
     clipped_prompts = prompts[:]
+    nc_indexs = []
+    for ind,prompt in enumerate(clipped_prompts):
+        if "[NC]"  in prompt:
+            nc_indexs.append(ind)
+            if ind < id_length:
+                raise gr.Error(f"The first {id_length} row is id prompts, cannot use [NC]!")
     prompts = [general_prompt + "," + prompt if "[NC]" not in prompt else prompt.replace("[NC]","")  for prompt in clipped_prompts]
     prompts = [prompt.rpartition('#')[0] if "#" in prompt else prompt for prompt in prompts]
     print(prompts)
@@ -548,14 +665,14 @@ def process_generation(_sd_type,_model_type,_upload_images, _num_steps,style_nam
     yield total_results
     real_images = []
     write = False
-    for real_prompt in real_prompts:
+    for ind,real_prompt in enumerate(real_prompts):
         setup_seed(seed_)
         cur_step = 0
         real_prompt = apply_style_positive(style_name, real_prompt)
         if _model_type == "original":   
             real_images.append(pipe(real_prompt,  num_inference_steps=_num_steps, guidance_scale=guidance_scale,  height = height, width = width,negative_prompt = negative_prompt,generator = generator).images[0])
         elif _model_type == "Photomaker":      
-            real_images.append(pipe(real_prompt, input_id_images=input_id_images, num_inference_steps=_num_steps, guidance_scale=guidance_scale,  start_merge_step = start_merge_step, height = height, width = width,negative_prompt = negative_prompt,generator = generator).images[0])
+            real_images.append(pipe(real_prompt, input_id_images=input_id_images, num_inference_steps=_num_steps, guidance_scale=guidance_scale,  start_merge_step = start_merge_step, height = height, width = width,negative_prompt = negative_prompt,generator = generator,nc_flag = True if ind+id_length in nc_indexs else False).images[0])
         else:
             raise NotImplementedError("You should choice between original and Photomaker!",f"But you choice {_model_type}")
         total_results = [real_images[-1]] + total_results
@@ -565,10 +682,12 @@ def process_generation(_sd_type,_model_type,_upload_images, _num_steps,style_nam
         captions = [caption.replace("[NC]","") for caption in captions]
         captions = [caption.split('#')[-1] if "#" in caption else caption for caption in captions]
         from PIL import ImageFont
-        total_results = get_comic(id_images + real_images, _comic_type,captions= captions,font=ImageFont.truetype("./fonts/Inkfree.ttf", int(45))) + total_results
-    set_attention_processor(pipe.unet,id_length_,is_ipadapter = False)
+        
+        font_path = os.path.join("fonts", font_choice)
+        print(f"Attempting to load font from path: {font_path}")
+        font = ImageFont.truetype(font_path, int(45))
+    total_results = get_comic(id_images + real_images, _comic_type, captions=captions, font=font) + total_results
     yield total_results
-
 
 
 def array2string(arr):
@@ -595,22 +714,9 @@ with gr.Blocks(css=css) as demo:
 
     with gr.Row():
         with gr.Group(elem_id="main-image"):
-            # button_run = gr.Button("generate id images ! 😺", elem_id="main_button", interactive=True)
 
             prompts = []
             colors = []
-            # with gr.Column(visible=False) as post_sketch:
-            #     for n in range(MAX_COLORS):
-            #         if n == 0 :
-            #             with gr.Row(visible=False) as color_row[n]:
-            #                 colors.append(gr.Image(shape=(100, 100), label="background", type="pil", image_mode="RGB", width=100, height=100))
-            #                 prompts.append(gr.Textbox(label="Prompt for the background (white region)", value=""))
-            #         else:
-            #             with gr.Row(visible=False) as color_row[n]:
-            #                 colors.append(gr.Image(shape=(100, 100), label="segment "+str(n), type="pil", image_mode="RGB", width=100, height=100))
-            #                 prompts.append(gr.Textbox(label="Prompt for the segment "+str(n)))
-
-            #     get_genprompt_run = gr.Button("(2) I've finished segment labeling ! 😺", elem_id="prompt_button", interactive=True)
 
             with gr.Column(visible=True) as gen_prompt_vis:
                 sd_type = gr.Dropdown(choices=list(models_dict.keys()), value = "Unstable",label="sd_type", info="Select pretrained model")
@@ -628,11 +734,10 @@ with gr.Blocks(css=css) as demo:
                 style = gr.Dropdown(label="Style template", choices=STYLE_NAMES, value=DEFAULT_STYLE_NAME)
                 prompt_array = gr.Textbox(lines = 3,value='', label="(3) Comic Description (each line corresponds to a frame).", interactive=True)
                 with gr.Accordion("(4) Tune the hyperparameters", open=True):
-                    #sa16_ = gr.Slider(label=" (The degree of Paired Attention at 16 x 16 self-attention layers) ", minimum=0, maximum=1., value=0.3, step=0.1)
-                    sa32_ = gr.Slider(label=" (The degree of Paired Attention at 32 x 32 self-attention layers) ", minimum=0, maximum=1., value=0.7, step=0.1)
-                    sa64_ = gr.Slider(label=" (The degree of Paired Attention at 64 x 64 self-attention layers) ", minimum=0, maximum=1., value=0.7, step=0.1)
+                    font_choice = gr.Dropdown(label="Select Font", choices=[f for f in os.listdir("./fonts") if f.endswith('.ttf')], value="Inkfree.ttf", info="Select font for the final slide.", interactive=True)
+                    sa32_ = gr.Slider(label=" (The degree of Paired Attention at 32 x 32 self-attention layers) ", minimum=0, maximum=1., value=0.5, step=0.1)
+                    sa64_ = gr.Slider(label=" (The degree of Paired Attention at 64 x 64 self-attention layers) ", minimum=0, maximum=1., value=0.5, step=0.1)
                     id_length_ = gr.Slider(label= "Number of id images in total images" , minimum=2, maximum=4, value=2, step=1)
-                    # total_length_ = gr.Slider(label= "Number of total images", minimum=1, maximum=20, value=1, step=1)
                     seed_ = gr.Slider(label="Seed", minimum=-1, maximum=MAX_SEED, value=0, step=1)
                     num_steps = gr.Slider( 
                         label="Number of sample steps",
@@ -690,13 +795,39 @@ with gr.Blocks(css=css) as demo:
     files.upload(fn=swap_to_gallery, inputs=files, outputs=[uploaded_files, clear_button, files])
     remove_and_reupload.click(fn=remove_back_to_files, outputs=[uploaded_files, clear_button, files])
 
-    final_run_btn.click(fn=set_text_unfinished, outputs = generated_information
-    ).then(process_generation, inputs=[sd_type,model_type,files, num_steps,style, Ip_Adapter_Strength,style_strength_ratio, guidance_scale, seed_, sa32_, sa64_, id_length_, general_prompt, negative_prompt, prompt_array,G_height,G_width,comic_type], outputs=out_image
-    ).then(fn=set_text_finished,outputs = generated_information)
+    final_run_btn.click(fn=set_text_unfinished, outputs=generated_information
+    ).then(process_generation, inputs=[sd_type,model_type,files, num_steps,style, Ip_Adapter_Strength,style_strength_ratio, guidance_scale, seed_, sa32_, sa64_, id_length_, general_prompt, negative_prompt, prompt_array,G_height,G_width,comic_type, font_choice], outputs=out_image
+    ).then(fn=set_text_finished,outputs=generated_information)
 
 
     gr.Examples(
         examples=[
+            [0,0.5,0.5,2,"a man, wearing black suit",
+                "bad anatomy, bad hands, missing fingers, extra fingers, three hands, three legs, bad arms, missing legs, missing arms, poorly drawn face, bad face, fused face, cloned face, three crus, fused feet, fused thigh, extra crus, ugly fingers, horn, cartoon, cg, 3d, unreal, animate, amputation, disconnected limbs",
+                array2string(["at home, read new paper #at home, The newspaper says there is a treasure house in the forest.",
+                            "on the road, near the forest",
+                            "[NC] The car on the road, near the forest #He drives to the forest in search of treasure.",
+                            "[NC]A tiger appeared in the forest, at night ",
+                            "very frightened, open mouth, in the forest, at night",
+                            "running very fast, in the forest, at night",
+                            "[NC] A house in the forest, at night #Suddenly, he discovers the treasure house!",
+                            "in the house filled with  treasure, laughing, at night #He is overjoyed inside the house."
+                            ]),
+                            "Comic book","Only Using Textual Description",get_image_path_list('./examples/taylor'),768,768
+            ],
+            [0,0.5,0.5,2,"a man, wearing black suit",
+                "bad anatomy, bad hands, missing fingers, extra fingers, three hands, three legs, bad arms, missing legs, missing arms, poorly drawn face, bad face, fused face, cloned face, three crus, fused feet, fused thigh, extra crus, ugly fingers, horn, cartoon, cg, 3d, unreal, animate, amputation, disconnected limbs",
+                array2string(["at home, read new paper #at home, The newspaper says there is a treasure house in the forest.",
+                            "on the road, near the forest",
+                            "[NC] The car on the road, near the forest #He drives to the forest in search of treasure.",
+                            "[NC]A tiger appeared in the forest, at night ",
+                            "very frightened, open mouth, in the forest, at night",
+                            "running very fast, in the forest, at night",
+                            "[NC] A house in the forest, at night #Suddenly, he discovers the treasure house!",
+                            "in the house filled with  treasure, laughing, at night #He is overjoyed inside the house."
+                            ]),
+                            "Comic book","Using Ref Images",get_image_path_list('./examples/Robert'),1024,1024
+            ],
             [1,0.5,0.5,3,"a woman img, wearing a white T-shirt, blue loose hair",
                    "bad anatomy, bad hands, missing fingers, extra fingers, three hands, three legs, bad arms, missing legs, missing arms, poorly drawn face, bad face, fused face, cloned face, three crus, fused feet, fused thigh, extra crus, ugly fingers, horn, cartoon, cg, 3d, unreal, animate, amputation, disconnected limbs",
                    array2string(["wake up in the bed",
@@ -707,7 +838,7 @@ with gr.Blocks(css=css) as demo:
                                 "lying in bed at night"]),
                                 "Japanese Anime",  "Using Ref Images",get_image_path_list('./examples/taylor'),768,768
                 ],
-                [0,0.5,0.5,2,"a man, wearing black jacket",
+                [0,0.5,0.5,3,"a man, wearing black jacket",
                    "bad anatomy, bad hands, missing fingers, extra fingers, three hands, three legs, bad arms, missing legs, missing arms, poorly drawn face, bad face, fused face, cloned face, three crus, fused feet, fused thigh, extra crus, ugly fingers, horn, cartoon, cg, 3d, unreal, animate, amputation, disconnected limbs",
                    array2string(["wake up in the bed",
                                 "have breakfast",
@@ -718,7 +849,7 @@ with gr.Blocks(css=css) as demo:
                                 ]),
                                 "Japanese Anime","Only Using Textual Description",get_image_path_list('./examples/taylor'),768,768
                 ],
-                [0,0.3,0.5,2,"a girl, wearing white shirt, black skirt, black tie, yellow hair",
+                [0,0.3,0.5,3,"a girl, wearing white shirt, black skirt, black tie, yellow hair",
                    "bad anatomy, bad hands, missing fingers, extra fingers, three hands, three legs, bad arms, missing legs, missing arms, poorly drawn face, bad face, fused face, cloned face, three crus, fused feet, fused thigh, extra crus, ugly fingers, horn, cartoon, cg, 3d, unreal, animate, amputation, disconnected limbs",
                     array2string([
                             "at home #at home, began to go to drawing",
@@ -728,13 +859,9 @@ with gr.Blocks(css=css) as demo:
                             "look around in the park. # She looks around and enjoys the beauty of nature.",
                             "[NC]leaf falls from the tree, landing on the sketchbook.",
                             "picks up the leaf, examining its details closely.",
-                            "starts sketching the leaf with intricate lines.",
-                            "holds up the sketch drawing of the leaf.",
                             "[NC]The brown squirrel appear.",
                             "is very happy # She is very happy to see the squirrel again",
-                            "[NC]The brown squirrel takes the cracker and scampers up a tree. # She gives the squirrel cracker",
-                            "laughs and tucks the leaf into her book as a keepsake.",
-                            "ready to leave.",]),
+                            "[NC]The brown squirrel takes the cracker and scampers up a tree. # She gives the squirrel cracker"]),
                     "Japanese Anime","Only Using Textual Description",get_image_path_list('./examples/taylor'),768,768
                 ]
                 ],
@@ -745,6 +872,20 @@ with gr.Blocks(css=css) as demo:
     )
     gr.Markdown(article)
 
-    # demo.load(None, None, None, _js=load_js)
 
-demo.launch(server_name="0.0.0.0", share = True if use_va else False)
+# demo.launch(server_name="0.0.0.0", share = False, debug=debug_mode)
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="Run the Gradio app with specific memory settings.")
+    parser.add_argument("--mode", type=str, choices=["lowram", "normal", "mps"], default="lowram", help="Choose the running mode based on system capabilities. Use this argument as '--mode lowram' or '--mode normal' or '--mode mps'.")
+    parser.add_argument("--debug", action="store_true",
+                        help="Run the server in debug mode.")
+    args = parser.parse_args()
+    return args
+
+if __name__ == "__main__":
+    args = parse_arguments()
+    debug_mode = args.debug
+    mode = args.mode
+    print(f"Starting server in {mode} mode...")
+    demo.launch(server_name="0.0.0.0", share=False, debug=debug_mode)
