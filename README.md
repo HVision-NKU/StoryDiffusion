@@ -144,8 +144,9 @@ This project strives to impact the domain of AI-driven image and video generatio
 If you find StoryDiffusion useful for your research and applications, please cite using this BibTeX:
 
 ```BibTeX
-@article{Zhou2024storydiffusion,
+@article{zhou2024storydiffusion,
   title={StoryDiffusion: Consistent Self-Attention for Long-Range Image and Video Generation},
   author={Zhou, Yupeng and Zhou, Daquan and Cheng, Ming-Ming and Feng, Jiashi and Hou, Qibin},
+  journal={arXiv preprint arXiv:2405.01434},
   year={2024}
 }
