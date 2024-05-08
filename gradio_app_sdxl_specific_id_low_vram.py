@@ -38,7 +38,7 @@ STYLE_NAMES = list(styles.keys())
 DEFAULT_STYLE_NAME = "Japanese Anime"
 global models_dict
 models_dict = {
-   "Juggernaut": "RunDiffusion/Juggernaut-XL-v8",
+#    "Juggernaut": "RunDiffusion/Juggernaut-XL-v8", ### Not support now Juggernaut
    "RealVision": "SG161222/RealVisXL_V4.0" ,
    "SDXL": "stabilityai/stable-diffusion-xl-base-1.0" ,
    "Unstable": "stablediffusionapi/sdxl-unstable-diffusers-y"
