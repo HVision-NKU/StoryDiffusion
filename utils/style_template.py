@@ -15,7 +15,7 @@ style_list = [
         "negative_prompt": "anime, cartoon, graphic, text, painting, crayon, graphite, abstract, glitch, deformed, mutated, ugly, disfigured",
     },
     {
-        "name": "Disney Charactor",
+        "name": "Disney Character",
         "prompt": "A Pixar animation character of {prompt} . pixar-style, studio anime, Disney, high-quality",
         "negative_prompt": "lowres, bad anatomy, bad hands, text, bad eyes, bad arms, bad legs, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, blurry, grayscale, noisy, sloppy, messy, grainy, highly detailed, ultra textured, photo",
     },

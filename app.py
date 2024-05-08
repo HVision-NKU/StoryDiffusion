@@ -1,13 +1,17 @@
+import sys, argparse
+import logging
 from email.policy import default
-from this import d
 import gradio as gr
 import numpy as np
 import torch
 import gc
+from this import d
+import copy
+import os
 from huggingface_hub import hf_hub_download
 import random
 import os
-import argparse
+import sys
 from tqdm.auto import tqdm
 from utils.gradio_utils import is_torch2_available
 if is_torch2_available():
@@ -19,21 +23,21 @@ from diffusers import StableDiffusionXLPipeline
 from utils import PhotoMakerStableDiffusionXLPipeline
 from diffusers import DDIMScheduler
 import torch.nn.functional as F
-from utils.gradio_utils import cal_attn_mask_xl,cal_attn_indice_xl_effcient_memory
-import copy
-import os
 from diffusers.utils import load_image
 from utils.utils import get_comic
 from utils.style_template import styles
+from utils.gradio_utils import cal_attn_mask_xl,cal_attn_indice_xl_effcient_memory
+
+
 image_encoder_path = "./data/models/ip_adapter/sdxl_models/image_encoder"
 ip_ckpt = "./data/models/ip_adapter/sdxl_models/ip-adapter_sdxl_vit-h.bin"
 os.environ["no_proxy"] = "localhost,127.0.0.1,::1"
 STYLE_NAMES = list(styles.keys())
 DEFAULT_STYLE_NAME = "Japanese Anime"
 global models_dict
-mode = "lowram"
+
 models_dict = {
-#   "Juggernaut": "RunDiffusion/Juggernaut-XL-v8", ### Not support now Juggernaut
+#    "Juggernaut": "RunDiffusion/Juggernaut-XL-v8", ### Not support now Juggernaut
    "RealVision": "SG161222/RealVisXL_V4.0" ,
    "SDXL": "stabilityai/stable-diffusion-xl-base-1.0" ,
    "Unstable": "stablediffusionapi/sdxl-unstable-diffusers-y"
@@ -92,26 +96,23 @@ class SpatialAttnProcessor2_0(torch.nn.Module):
         temb=None):
         # un_cond_hidden_states, cond_hidden_states = hidden_states.chunk(2)
         # un_cond_hidden_states = self.__call2__(attn, un_cond_hidden_states,encoder_hidden_states,attention_mask,temb)
-        # 生成一个0到1之间的随机数
-        global total_count,attn_count,cur_step
-        global mode
-        
-        if mode == "lowram":
-            #print (f"lowram1")
-            global indices1024, indices4096
-        if mode == "normal":
-            global mask1024, mask4096
+        # import random 
+        # print(random.random())
+        global total_count,attn_count,cur_step,indices1024,indices4096,mask1024,mask4096
         global sa32, sa64
         global write
         global height,width
-
-        if mode == "lowram":
-            #print (f"lowram2")
+        if mode == "normal":
+            print(f"Normal")
+            if write:
+                self.id_bank[cur_step] = [hidden_states[:self.id_length].clone(), hidden_states[self.id_length:].clone()]
+            else:
+                encoder_hidden_states = torch.cat((self.id_bank[cur_step][0].to(self.device),hidden_states[:1],self.id_bank[cur_step][1].to(self.device),hidden_states[1:]))
+        if mode == "lowvram":
+            print(f"Low VRAM")
             if attn_count == 0 and cur_step == 0:
                 indices1024,indices4096 = cal_attn_indice_xl_effcient_memory(self.total_length,self.id_length,sa32,sa64,height,width, device=self.device, dtype= self.dtype)
-        if write:
-            if mode == "lowram":
-                #print (f"lowram3")
+            if write:
                 if hidden_states.shape[1] == (height//32) * (width//32):
                     indices = indices1024
                 else:
@@ -122,16 +123,11 @@ class SpatialAttnProcessor2_0(torch.nn.Module):
                 hidden_states = hidden_states.reshape(-1,img_nums,nums_token,channel)
                 self.id_bank[cur_step] = [hidden_states[:,img_ind,indices[img_ind],:].reshape(2,-1,channel).clone() for img_ind in range(img_nums)]
                 hidden_states = hidden_states.reshape(-1,nums_token,channel)
-            if mode == "normal":
-                self.id_bank[cur_step] = [hidden_states[:self.id_length].clone(), hidden_states[self.id_length:].clone()]
-        else:
-            if mode == "lowram":
-                #print (f"lowram4")
+                #self.id_bank[cur_step] = [hidden_states[:self.id_length].clone(), hidden_states[self.id_length:].clone()]
+            else:
                 #encoder_hidden_states = torch.cat((self.id_bank[cur_step][0].to(self.device),self.id_bank[cur_step][1].to(self.device)))
                 encoder_arr = [tensor.to(self.device)  for tensor in self.id_bank[cur_step]]
-            if mode == "normal":
-                encoder_hidden_states = torch.cat((self.id_bank[cur_step][0].to(self.device),hidden_states[:1],self.id_bank[cur_step][1].to(self.device),hidden_states[1:]))
-        # 判断随机数是否大于0.5
+        # if random.random() > 0.5:
         if cur_step <1:
             hidden_states = self.__call2__(attn, hidden_states,None,attention_mask,temb)
         else:   # 256 1024 4096
@@ -142,12 +138,27 @@ class SpatialAttnProcessor2_0(torch.nn.Module):
                 rand_num = 0.1
             # print(f"hidden state shape {hidden_states.shape[1]}")
             if random_number > rand_num:
-                if mode == "lowram":
-                    #print (f"lowram5")
+                if mode == "normal":
+                    if not write:
+                        if hidden_states.shape[1] == (height//32) * (width//32):
+                            attention_mask = mask1024[mask1024.shape[0] // self.total_length * self.id_length:]
+                        else:
+                            attention_mask = mask4096[mask4096.shape[0] // self.total_length * self.id_length:]
+                    else:
+                        # print(self.total_length,self.id_length,hidden_states.shape,(height//32) * (width//32))
+                        if hidden_states.shape[1] == (height//32) * (width//32):
+                            attention_mask = mask1024[:mask1024.shape[0] // self.total_length * self.id_length,:mask1024.shape[0] // self.total_length * self.id_length]
+                        else:
+                            attention_mask = mask4096[:mask4096.shape[0] // self.total_length * self.id_length,:mask4096.shape[0] // self.total_length * self.id_length]
+                    # print(attention_mask.shape)
+                    # print("before attention",hidden_states.shape,attention_mask.shape,encoder_hidden_states.shape if encoder_hidden_states is not None else "None")
+                    hidden_states = self.__call1__(attn, hidden_states,encoder_hidden_states,attention_mask,temb)
+                if mode == "lowvram":
                     if hidden_states.shape[1] == (height//32) * (width//32):
                         indices = indices1024
                     else:
                         indices = indices4096
+                    # print("before attention",hidden_states.shape,attention_mask.shape,encoder_hidden_states.shape if encoder_hidden_states is not None else "None")
                     if write:
                         total_batch_size,nums_token,channel = hidden_states.shape
                         img_nums = total_batch_size // 2
@@ -166,36 +177,19 @@ class SpatialAttnProcessor2_0(torch.nn.Module):
                         encoder_hidden_states_tmp = torch.cat(encoder_arr+[hidden_states[:,0,:,:]],dim=1)
                         hidden_states[:,0,:,:] = self.__call2__(attn, hidden_states[:,0,:,:],encoder_hidden_states_tmp,None,temb)
                     hidden_states = hidden_states.reshape(-1,nums_token,channel)
-                hidden_states = self.__call1__(attn, hidden_states,encoder_hidden_states,attention_mask,temb)
-               
-                if mode == "normal":
-                    if not write:
-                        if hidden_states.shape[1] == (height//32) * (width//32):
-                            attention_mask = mask1024[mask1024.shape[0] // self.total_length * self.id_length:]
-                        else:
-                            attention_mask = mask4096[mask4096.shape[0] // self.total_length * self.id_length:]
-                    else:
-                        # print(self.total_length,self.id_length,hidden_states.shape,(height//32) * (width//32))
-                        if hidden_states.shape[1] == (height//32) * (width//32):
-                            attention_mask = mask1024[:mask1024.shape[0] // self.total_length * self.id_length,:mask1024.shape[0] // self.total_length * self.id_length]
-                        else:
-                            attention_mask = mask4096[:mask4096.shape[0] // self.total_length * self.id_length,:mask4096.shape[0] // self.total_length * self.id_length]
-                    # print(attention_mask.shape)
-                    # print("before attention",hidden_states.shape,attention_mask.shape,encoder_hidden_states.shape if encoder_hidden_states is not None else "None")
-                    hidden_states = self.__call1__(attn, hidden_states,encoder_hidden_states,attention_mask,temb)
             else:
                 hidden_states = self.__call2__(attn, hidden_states,None,attention_mask,temb)
         attn_count +=1
         if attn_count == total_count:
             attn_count = 0
             cur_step += 1
-            if mode == "lowram":
-                #print (f"lowram8")
-                indices1024,indices4096 = cal_attn_indice_xl_effcient_memory(self.total_length,self.id_length,sa32,sa64,height,width, device=self.device, dtype= self.dtype)
             if mode == "normal":
                 mask1024,mask4096 = cal_attn_mask_xl(self.total_length,self.id_length,sa32,sa64,height,width, device=self.device, dtype= self.dtype)
+            if mode == "lowvram":
+                indices1024,indices4096 = cal_attn_indice_xl_effcient_memory(self.total_length,self.id_length,sa32,sa64,height,width, device=self.device, dtype= self.dtype)
 
         return hidden_states
+    
     def __call1__(
         self,
         attn,
@@ -229,8 +223,7 @@ class SpatialAttnProcessor2_0(torch.nn.Module):
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states   # B, N, C
         else:
-            if mode == "normal":
-                encoder_hidden_states = encoder_hidden_states.view(-1,self.id_length+1,nums_token,channel).reshape(-1,(self.id_length+1) * nums_token,channel)
+            encoder_hidden_states = encoder_hidden_states.view(-1,self.id_length+1,nums_token,channel).reshape(-1,(self.id_length+1) * nums_token,channel)
 
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
@@ -295,7 +288,6 @@ class SpatialAttnProcessor2_0(torch.nn.Module):
         batch_size, sequence_length, channel = (
             hidden_states.shape
         )
-        
         # print(hidden_states.shape)
         if attention_mask is not None:
             attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
@@ -313,8 +305,6 @@ class SpatialAttnProcessor2_0(torch.nn.Module):
         else:
             if mode == "normal":
                 encoder_hidden_states = encoder_hidden_states.view(-1,self.id_length+1,sequence_length,channel).reshape(-1,(self.id_length+1) * sequence_length,channel)
-            else:
-                pass
 
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
@@ -452,7 +442,7 @@ The Contents you create are under Apache-2.0 LICENSE. The Code are under Attribu
 If you have any questions, please feel free to reach me out at <b>ypzhousdu@gmail.com</b>.
 """
 version = r"""
-<h3 align="center">StoryDiffusion Version 0.01 (test version)</h3>
+<h3 align="center">StoryDiffusion Version 0.02 (test version)</h3>
 
 <h5 >1. Support image ref image. (Cartoon Ref image is not support now)</h5>
 <h5 >2. Support Typesetting Style and Captioning.(By default, the prompt is used as the caption for each image. If you need to change the caption, add a # at the end of each line. Only the part after the # will be added as a caption to the image.)</h5>
@@ -483,32 +473,25 @@ width = 768
 ###
 global pipe
 global sd_model_path
-# global mode
 pipe = None
+# if mode == "lowvram":
+print ("Low VRAM 2")
+sd_model_path = models_dict["Unstable"]#"SG161222/RealVisXL_V4.0"
+use_safetensors_value = False
+# if mode == "normal":
+#     sd_model_path = models_dict["RealVision"]#"SG161222/RealVisXL_V4.0"
+#     use_safetensors_value = True
 
-if mode == "normal":
-    use_safetensors = True
-    print (f"normal {use_safetensors}")
-    sd_model_path = models_dict["RealVision"]#"SG161222/RealVisXL_V4.0"
-if mode == "lowram":
-    use_safetensors = False
-    print (f"lowram {use_safetensors}")
-    sd_model_path = models_dict["Unstable"]
-
-pipe = StableDiffusionXLPipeline.from_pretrained(sd_model_path, torch_dtype=torch.float16, use_safetensors=use_safetensors)
+### LOAD Stable Diffusion Pipeline
+pipe = StableDiffusionXLPipeline.from_pretrained(sd_model_path, torch_dtype=torch.float16, use_safetensors = use_safetensors_value)
 pipe = pipe.to(device)
 pipe.enable_freeu(s1=0.6, s2=0.4, b1=1.1, b2=1.2)
 # pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
 pipe.scheduler.set_timesteps(50)
-
-if mode == "lowram":
-    #print (f"lowram11")
-    pipe.enable_vae_slicing()
-    pipe.enable_model_cpu_offload()
-    cur_model_type = "Unstable"+"-"+"original"
-#======
+pipe.enable_vae_slicing()
+pipe.enable_model_cpu_offload()
 unet = pipe.unet
-
+cur_model_type = "Unstable"+"-"+"original"
 ### Insert PairedAttention
 for name in unet.attn_processors.keys():
     cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
@@ -579,22 +562,30 @@ def process_generation(_sd_type,_model_type,_upload_images, _num_steps,style_nam
     global sd_model_path,models_dict
     sd_model_path = models_dict[_sd_type]
     use_safe_tensor = True
-    for attn_processor in pipe.unet.attn_processors.values():
-        if isinstance(attn_processor, SpatialAttnProcessor2_0):
-            for values in attn_processor.id_bank.values():
-                del values
-            attn_processor.id_bank = {}
-            attn_processor.id_length = id_length
-            attn_processor.total_length =  id_length + 1
-    gc.collect()
-    if cur_model_type != _sd_type+"-"+_model_type:
-        if _sd_type in ["Unstable","Juggernaut"]:
-            use_safe_tensor = False
-        # apply the style template
-        ##### load pipe
-        del pipe
+    if mode == "lowvram":
+        print ("Low VRAM 3")
+        for attn_processor in pipe.unet.attn_processors.values():
+            if isinstance(attn_processor, SpatialAttnProcessor2_0):
+                for values in attn_processor.id_bank.values():
+                    del values
+                attn_processor.id_bank = {}
+                attn_processor.id_length = id_length
+                attn_processor.total_length =  id_length + 1
         gc.collect()
-        torch.cuda.empty_cache()
+        if cur_model_type != _sd_type+"-"+_model_type:
+            if _sd_type in ["Unstable","Juggernaut"]:
+                use_safe_tensor = False
+            # apply the style template
+            ##### load pipe
+            del pipe
+            gc.collect()
+            torch.cuda.empty_cache()
+    if mode == "normal":       
+        if cur_model_type != _sd_type+"-"+_model_type+""+str(id_length_):
+            if _sd_type == "Unstable":
+                use_safe_tensor = False
+            # apply the style template
+            ##### load pipe   
         if _model_type == "original":
             pipe = StableDiffusionXLPipeline.from_pretrained(sd_model_path, torch_dtype=torch.float16, use_safetensors=use_safe_tensor)
             pipe = pipe.to(device)
@@ -616,12 +607,16 @@ def process_generation(_sd_type,_model_type,_upload_images, _num_steps,style_nam
         ##### ########################
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe.enable_freeu(s1=0.6, s2=0.4, b1=1.1, b2=1.2)
-        cur_model_type = _sd_type+"-"+_model_type
-        pipe.enable_vae_slicing()
-        pipe.enable_model_cpu_offload()
+        if mode == "lowvram":
+            cur_model_type = _sd_type+"-"+_model_type
+            pipe.enable_vae_slicing()
+            pipe.enable_model_cpu_offload()
+        if mode == "normal":
+            cur_model_type = _sd_type+"-"+_model_type+""+str(id_length_)
     else:
         unet = pipe.unet
-        # unet.set_attn_processor(copy.deepcopy(attn_procs))
+        if mode == "normal":
+            unet.set_attn_processor(copy.deepcopy(attn_procs))
     if _model_type != "original":
         input_id_images = []
         for img in _upload_images:
@@ -688,6 +683,7 @@ def process_generation(_sd_type,_model_type,_upload_images, _num_steps,style_nam
         font = ImageFont.truetype(font_path, int(45))
     total_results = get_comic(id_images + real_images, _comic_type, captions=captions, font=font) + total_results
     yield total_results
+
 
 
 def array2string(arr):
@@ -872,20 +868,30 @@ with gr.Blocks(css=css) as demo:
     )
     gr.Markdown(article)
 
-
-# demo.launch(server_name="0.0.0.0", share = False, debug=debug_mode)
-
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Run the Gradio app with specific memory settings.")
-    parser.add_argument("--mode", type=str, choices=["lowram", "normal", "mps"], default="lowram", help="Choose the running mode based on system capabilities. Use this argument as '--mode lowram' or '--mode normal' or '--mode mps'.")
-    parser.add_argument("--debug", action="store_true",
-                        help="Run the server in debug mode.")
-    args = parser.parse_args()
-    return args
+    parser.add_argument("--mode", type=str, choices=["lowvram", "normal", "mps"], default="lowvram", help="Choose the running mode based on system capabilities. Use this argument as '--mode lowram' or '--mode normal' or '--mode mps'.")
+    parser.add_argument("--debug", action="store_true", help="Run the server in debug mode. Use '--debug' to enable debug mode.")
+    return parser.parse_args()
 
-if __name__ == "__main__":
+
+def main():
     args = parse_arguments()
     debug_mode = args.debug
+    global mode
     mode = args.mode
-    print(f"Starting server in {mode} mode...")
+    
+    print(f"Running in {mode} mode with debug set to {debug_mode}")
+    
+    # Configure logging based on debug mode
+    if debug_mode:
+        logging.basicConfig(level=logging.DEBUG)
+    else:
+        logging.basicConfig(level=logging.INFO)
+
+    logging.info("Starting application...")
+        
     demo.launch(server_name="0.0.0.0", share=False, debug=debug_mode)
+
+if __name__ == "__main__":
+    main()
