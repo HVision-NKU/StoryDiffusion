@@ -535,7 +535,7 @@ def process_generation(_sd_type,_model_type,_upload_images, _num_steps,style_nam
             attn_processor.total_length =  id_length + 1
     gc.collect()
     if cur_model_type != _sd_type+"-"+_model_type:
-        if _sd_type == "Unstable":
+        if _sd_type in ["Unstable","Juggernaut"]:
             use_safe_tensor = False
         # apply the style template
         ##### load pipe
