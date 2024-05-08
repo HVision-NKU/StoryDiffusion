@@ -85,3 +85,9 @@ venv.bak/
 # mypy
 .mypy_cache/
 .aider*
+
+# ignore ALL .log files
+*.log
+# ignore ALL files in ANY directory named temp
+.ipynb_checkpoints/
+images/.ipynb_checkpoints/
