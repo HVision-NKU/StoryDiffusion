@@ -774,7 +774,7 @@ with gr.Blocks(css=css) as demo:
                             "[NC] A house in the forest, at night #Suddenly, he discovers the treasure house!",
                             "in the house filled with  treasure, laughing, at night #He is overjoyed inside the house."
                             ]),
-                            "Comic book","Only Using Textual Description",get_image_path_list('./examples/Robert'),1024,1024
+                            "Comic book","Using Ref Images",get_image_path_list('./examples/Robert'),1024,1024
             ],
             [1,0.5,0.5,3,"a woman img, wearing a white T-shirt, blue loose hair",
                    "bad anatomy, bad hands, missing fingers, extra fingers, three hands, three legs, bad arms, missing legs, missing arms, poorly drawn face, bad face, fused face, cloned face, three crus, fused feet, fused thigh, extra crus, ugly fingers, horn, cartoon, cg, 3d, unreal, animate, amputation, disconnected limbs",
