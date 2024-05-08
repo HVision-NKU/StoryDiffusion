@@ -423,4 +423,4 @@ def process_example(layout_path, all_prompts, seed_):
         prompts[n] = all_prompts[n+1]
 
     return [gr.update(visible=True), binary_matrixes, *visibilities, *colors, *prompts,
-            gr.update(visible=True), gr.update(value=all_prompts[0]), int(seed_)]
+            gr.update(visible=True), gr.update(value=all_prompts[0]), int(seed_)]    
