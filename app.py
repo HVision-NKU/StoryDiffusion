@@ -1,6 +1,7 @@
 import sys, argparse
 import logging
 from email.policy import default
+from webbrowser import get
 import gradio as gr
 import numpy as np
 import torch
@@ -36,12 +37,9 @@ STYLE_NAMES = list(styles.keys())
 DEFAULT_STYLE_NAME = "Japanese Anime"
 global models_dict
 
-models_dict = {
-#    "Juggernaut": "RunDiffusion/Juggernaut-XL-v8", ### Not support now Juggernaut
-   "RealVision": "SG161222/RealVisXL_V4.0" ,
-   "SDXL": "stabilityai/stable-diffusion-xl-base-1.0" ,
-   "Unstable": "stablediffusionapi/sdxl-unstable-diffusers-y"
-}
+from utils.load_models_utils import get_models_dict,load_models
+models_dict = get_models_dict()
+
 photomaker_path =  hf_hub_download(repo_id="TencentARC/PhotoMaker", filename="photomaker-v1.bin", repo_type="model")
 MAX_SEED = np.iinfo(np.int32).max
 def setup_seed(seed):
@@ -476,7 +474,7 @@ global sd_model_path
 pipe = None
 # if mode == "lowvram":
 print ("Low VRAM 2")
-sd_model_path = models_dict["Unstable"]#"SG161222/RealVisXL_V4.0"
+sd_model_path = models_dict["Unstable"]["path"] #"SG161222/RealVisXL_V4.0"
 use_safetensors_value = False
 # if mode == "normal":
 #     sd_model_path = models_dict["RealVision"]#"SG161222/RealVisXL_V4.0"
@@ -573,8 +571,8 @@ def process_generation(_sd_type,_model_type,_upload_images, _num_steps,style_nam
                 attn_processor.total_length =  id_length + 1
         gc.collect()
         if cur_model_type != _sd_type+"-"+_model_type:
-            if _sd_type in ["Unstable","Juggernaut"]:
-                use_safe_tensor = False
+            # if _sd_type in ["Unstable","Juggernaut"]:
+            #     use_safe_tensor = False
             # apply the style template
             ##### load pipe
             del pipe
@@ -586,24 +584,28 @@ def process_generation(_sd_type,_model_type,_upload_images, _num_steps,style_nam
                 use_safe_tensor = False
             # apply the style template
             ##### load pipe   
-        if _model_type == "original":
-            pipe = StableDiffusionXLPipeline.from_pretrained(sd_model_path, torch_dtype=torch.float16, use_safetensors=use_safe_tensor)
-            pipe = pipe.to(device)
-            set_attention_processor(pipe.unet,id_length_,is_ipadapter = False)
-        elif _model_type == "Photomaker":
-            pipe = PhotoMakerStableDiffusionXLPipeline.from_pretrained(
-                sd_model_path, torch_dtype=torch.float16, use_safetensors=use_safe_tensor)
-            pipe = pipe.to(device)
-            pipe.load_photomaker_adapter(
-                os.path.dirname(photomaker_path),
-                subfolder="",
-                weight_name=os.path.basename(photomaker_path),
-                trigger_word="img"  # define the trigger word
-            )
-            pipe.fuse_lora()
-            set_attention_processor(pipe.unet,id_length_,is_ipadapter = False)
-        else:
-            raise NotImplementedError("You should choice between original and Photomaker!",f"But you choice {_model_type}")
+        # if _model_type == "original":
+        #     pipe = StableDiffusionXLPipeline.from_pretrained(sd_model_path, torch_dtype=torch.float16, use_safetensors=use_safe_tensor)
+        #     pipe = pipe.to(device)
+        #     set_attention_processor(pipe.unet,id_length_,is_ipadapter = False)
+        # elif _model_type == "Photomaker":
+        #     pipe = PhotoMakerStableDiffusionXLPipeline.from_pretrained(
+        #         sd_model_path, torch_dtype=torch.float16, use_safetensors=use_safe_tensor)
+        #     pipe = pipe.to(device)
+        #     pipe.load_photomaker_adapter(
+        #         os.path.dirname(photomaker_path),
+        #         subfolder="",
+        #         weight_name=os.path.basename(photomaker_path),
+        #         trigger_word="img"  # define the trigger word
+        #     )
+        #     pipe.fuse_lora()
+        #     set_attention_processor(pipe.unet,id_length_,is_ipadapter = False)
+        # else:
+        #     raise NotImplementedError("You should choice between original and Photomaker!",f"But you choice {_model_type}")
+        model_info = models_dict[_sd_type]
+        model_info["model_type"] = _model_type
+        pipe = load_models(model_info,device=device,photomaker_path=photomaker_path)
+        set_attention_processor(pipe.unet,id_length_,is_ipadapter = False)
         ##### ########################
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe.enable_freeu(s1=0.6, s2=0.4, b1=1.1, b2=1.2)
