@@ -123,6 +123,13 @@ Run the following command:
 ```python
 python gradio_app_sdxl_specific_id.py
 ```
+```shell
+# use Docker
+docker build -f Dockerfile -t storydiffusion:dev .
+docker run -it --name storydiffusion  --runtime=nvidia --gpus all storydiffusion:dev
+cd /workspace/StoryDiffusion; 
+python gradio_app_sdxl_specific_id_low_vram.py 
+```
 
 **(Recommend)** We provide a low GPU Memory cost version, it was tested on a machine with 24GB GPU-memory(Tesla A10) and 30GB RAM, and expected to work well with >20 G GPU-memory.
 
