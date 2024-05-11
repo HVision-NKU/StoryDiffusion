@@ -140,6 +140,18 @@ If you have any questions, you are very welcome to email ypzhousdu@gmail.com and
 # Disclaimer
 This project strives to impact the domain of AI-driven image and video generation positively. Users are granted the freedom to create images and videos using this tool, but they are expected to comply with local laws and utilize it responsibly. The developers do not assume any responsibility for potential misuse by users.
 
+# Related Resources
+Following are some third-party implementations of StoryDiffusion.
+
+
+## API
+
+- [runpod.io serverless worker](https://github.com/bes-dev/story-diffusion-runpod-serverless-worker) provided by [BeS](https://github.com/bes-dev).
+- [Replicate worker](https://github.com/camenduru/StoryDiffusion-replicate) provided by [camenduru](https://github.com/camenduru).
+
+
+
+
 # BibTeX
 If you find StoryDiffusion useful for your research and applications, please cite using this BibTeX:
 
