@@ -732,7 +732,7 @@ with gr.Blocks(css=css) as demo:
                         minimum=20,
                         maximum=100,
                         step=1,
-                        value=50,
+                        value=20,
                     )
                     G_height = gr.Slider( 
                         label="height",
