@@ -659,17 +659,12 @@ def process_generation(_sd_type,_model_type,_upload_images, _num_steps,style_nam
         yield [results_dict[ind] for ind in results_dict.keys()]
     total_results = [results_dict[ind] for ind in range(len(prompts))]
     if _comic_type != "No typesetting (default)":
-        captions = prompt_array.splitlines()
-    else:
-        captions = []
+        captions= prompt_array.splitlines()
         captions = [caption.replace("[NC]","") for caption in captions]
         captions = [caption.split('#')[-1] if "#" in caption else caption for caption in captions]
-        
-        
         font_path = os.path.join("fonts", font_choice)
-        print(f"Attempting to load font from path: {font_path}")
         font = ImageFont.truetype(font_path, int(45))
-    total_results = get_comic(total_results, _comic_type, captions=captions if _comic_type != "No typesetting (default)" else [], font=font) + total_results
+        total_results = get_comic(total_results, _comic_type, captions=captions, font=font) + total_results
     save_results(pipe.unet,total_results)
 
     yield total_results
