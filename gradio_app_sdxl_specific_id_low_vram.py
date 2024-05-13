@@ -1,41 +1,26 @@
-from email.policy import default
 from this import d
-from webbrowser import get
 import gradio as gr
 import numpy as np
 import torch
 import gc
-from huggingface_hub import hf_hub_download
-import requests
+import copy
+import os
 import random
 import os
-import sys
-import pickle
-from PIL import Image
-from tqdm.auto import tqdm
-from datetime import datetime
-from utils.gradio_utils import is_torch2_available
-from utils.gradio_utils import get_id_prompt_index, character_to_dict,get_cur_id_list, process_original_prompt, get_ref_character
+import datetime
+from utils.gradio_utils import  character_to_dict, process_original_prompt, get_ref_character, cal_attn_mask_xl, cal_attn_indice_xl_effcient_memory, is_torch2_available
 if is_torch2_available():
     from utils.gradio_utils import \
         AttnProcessor2_0 as AttnProcessor
 else:
     from utils.gradio_utils  import AttnProcessor
-import datetime
-import diffusers
-from diffusers import StableDiffusionXLPipeline
-from utils import PhotoMakerStableDiffusionXLPipeline
-from diffusers import DDIMScheduler
+from huggingface_hub import hf_hub_download
+from diffusers import StableDiffusionXLPipeline, DDIMScheduler
 import torch.nn.functional as F
-from utils.gradio_utils import cal_attn_mask_xl,cal_attn_indice_xl_effcient_memory
-import copy
-import os
 from diffusers.utils import load_image
 from utils.utils import get_comic
 from utils.style_template import styles
-image_encoder_path = "./data/models/ip_adapter/sdxl_models/image_encoder"
-ip_ckpt = "./data/models/ip_adapter/sdxl_models/ip-adapter_sdxl_vit-h.bin"
-os.environ["no_proxy"] = "localhost,127.0.0.1,::1"
+
 STYLE_NAMES = list(styles.keys())
 DEFAULT_STYLE_NAME = "Japanese Anime"
 global models_dict
