@@ -92,3 +92,6 @@ venv.bak/
 .ipynb_checkpoints/
 images/.ipynb_checkpoints/
 results/
+.vscode/
+fonts/agency.ttf
+fonts/calibri.ttf

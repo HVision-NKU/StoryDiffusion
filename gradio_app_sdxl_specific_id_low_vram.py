@@ -8,6 +8,7 @@ import os
 import random
 import os
 import datetime
+from PIL import ImageFont
 from utils.gradio_utils import  character_to_dict, process_original_prompt, get_ref_character, cal_attn_mask_xl, cal_attn_indice_xl_effcient_memory, is_torch2_available
 if is_torch2_available():
     from utils.gradio_utils import \
@@ -20,11 +21,12 @@ import torch.nn.functional as F
 from diffusers.utils import load_image
 from utils.utils import get_comic
 from utils.style_template import styles
+from utils.load_models_utils import get_models_dict,load_models
 
 STYLE_NAMES = list(styles.keys())
 DEFAULT_STYLE_NAME = "Japanese Anime"
 global models_dict
-from utils.load_models_utils import get_models_dict,load_models
+
 models_dict = get_models_dict()
 
 
@@ -660,7 +662,7 @@ def process_generation(_sd_type,_model_type,_upload_images, _num_steps,style_nam
         captions= prompt_array.splitlines()
         captions = [caption.replace("[NC]","") for caption in captions]
         captions = [caption.split('#')[-1] if "#" in caption else caption for caption in captions]
-        from PIL import ImageFont
+        
         
         font_path = os.path.join("fonts", font_choice)
         print(f"Attempting to load font from path: {font_path}")
