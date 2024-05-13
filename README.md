@@ -30,7 +30,7 @@ https://github.com/HVision-NKU/StoryDiffusion/assets/49511209/d5b80f8f-09b0-48cd
 
 ### Update History
 
-You can visit [here](update.md) to visit update history.
+***You can visit [here](update.md) to visit update history.***
 
 ### 🌠  **Key Features:**
 StoryDiffusion can create a magic story by generating consistent images and videos. Our work mainly has two parts: 
