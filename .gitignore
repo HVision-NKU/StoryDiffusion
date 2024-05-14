@@ -91,3 +91,8 @@ venv.bak/
 # ignore ALL files in ANY directory named temp
 .ipynb_checkpoints/
 images/.ipynb_checkpoints/
+results/
+.vscode/settings.json
+fonts/agency.ttf
+fonts/calibri.ttf
+data/
