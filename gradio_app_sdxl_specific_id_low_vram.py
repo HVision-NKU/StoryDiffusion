@@ -1,45 +1,32 @@
-from email.policy import default
 from this import d
-from webbrowser import get
 import gradio as gr
 import numpy as np
 import torch
 import gc
-from huggingface_hub import hf_hub_download
-import requests
+import copy
+import os
 import random
 import os
-import sys
-import pickle
-from PIL import Image
-from tqdm.auto import tqdm
-from datetime import datetime
-from utils.gradio_utils import is_torch2_available
-from utils.gradio_utils import get_id_prompt_index, character_to_dict,get_cur_id_list, process_original_prompt, get_ref_character
+import datetime
+from PIL import ImageFont
+from utils.gradio_utils import  character_to_dict, process_original_prompt, get_ref_character, cal_attn_mask_xl, cal_attn_indice_xl_effcient_memory, is_torch2_available
 if is_torch2_available():
     from utils.gradio_utils import \
         AttnProcessor2_0 as AttnProcessor
 else:
     from utils.gradio_utils  import AttnProcessor
-import datetime
-import diffusers
-from diffusers import StableDiffusionXLPipeline
-from utils import PhotoMakerStableDiffusionXLPipeline
-from diffusers import DDIMScheduler
+from huggingface_hub import hf_hub_download
+from diffusers import StableDiffusionXLPipeline, DDIMScheduler
 import torch.nn.functional as F
-from utils.gradio_utils import cal_attn_mask_xl,cal_attn_indice_xl_effcient_memory
-import copy
-import os
 from diffusers.utils import load_image
 from utils.utils import get_comic
 from utils.style_template import styles
-image_encoder_path = "./data/models/ip_adapter/sdxl_models/image_encoder"
-ip_ckpt = "./data/models/ip_adapter/sdxl_models/ip-adapter_sdxl_vit-h.bin"
-os.environ["no_proxy"] = "localhost,127.0.0.1,::1"
+from utils.load_models_utils import get_models_dict,load_models
+
 STYLE_NAMES = list(styles.keys())
 DEFAULT_STYLE_NAME = "Japanese Anime"
 global models_dict
-from utils.load_models_utils import get_models_dict,load_models
+
 models_dict = get_models_dict()
 
 
@@ -675,12 +662,9 @@ def process_generation(_sd_type,_model_type,_upload_images, _num_steps,style_nam
         captions= prompt_array.splitlines()
         captions = [caption.replace("[NC]","") for caption in captions]
         captions = [caption.split('#')[-1] if "#" in caption else caption for caption in captions]
-        from PIL import ImageFont
-        
         font_path = os.path.join("fonts", font_choice)
-        print(f"Attempting to load font from path: {font_path}")
         font = ImageFont.truetype(font_path, int(45))
-    total_results = get_comic(total_results, _comic_type, captions=captions, font=font) + total_results
+        total_results = get_comic(total_results, _comic_type, captions=captions, font=font) + total_results
     save_results(pipe.unet,total_results)
 
     yield total_results
@@ -743,7 +727,7 @@ with gr.Blocks(css=css) as demo:
                         minimum=20,
                         maximum=100,
                         step=1,
-                        value=50,
+                        value=20,
                     )
                     G_height = gr.Slider( 
                         label="height",
