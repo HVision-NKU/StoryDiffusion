@@ -38,6 +38,16 @@ global models_dict
 
 models_dict = get_models_dict()
 
+#Automatically select the device
+device = (
+    "cuda"
+    if torch.cuda.is_available()
+    else "mps"
+    if torch.backends.mps.is_available()
+    else "cpu"
+)
+print(f'@@device:{device}')
+
 
 # check if the file exists locally at a specified path before downloading it.
 # if the file doesn't exist, it uses `hf_hub_download` to download the file
@@ -60,7 +70,8 @@ MAX_SEED = np.iinfo(np.int32).max
 
 def setup_seed(seed):
     torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+    if device == 'cuda':
+        torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     random.seed(seed)
     torch.backends.cudnn.deterministic = True
@@ -106,7 +117,7 @@ class SpatialAttnProcessor2_0(torch.nn.Module):
         hidden_size=None,
         cross_attention_dim=None,
         id_length=4,
-        device="cuda",
+        device=device,
         dtype=torch.float16,
     ):
         super().__init__()
@@ -546,7 +557,6 @@ cur_step = 0
 id_length = 4
 total_length = 5
 cur_model_type = ""
-device = "cuda"
 global attn_procs, unet
 attn_procs = {}
 ###
@@ -560,17 +570,22 @@ width = 768
 global pipe
 global sd_model_path
 pipe = None
-sd_model_path = models_dict["Unstable"]["path"]  # "SG161222/RealVisXL_V4.0"
+sd_model_path = models_dict["SDXL"]["path"]  # "SG161222/RealVisXL_V4.0"
+single_files =  models_dict["SDXL"]["single_files"]
 ### LOAD Stable Diffusion Pipeline
-pipe = StableDiffusionXLPipeline.from_pretrained(
-    sd_model_path, torch_dtype=torch.float16, use_safetensors=False
-)
+if single_files:
+    pipe = StableDiffusionXLPipeline.from_single_file(sd_model_path, torch_dtype=torch.float16)
+else:
+    pipe = StableDiffusionXLPipeline.from_pretrained(
+        sd_model_path, torch_dtype=torch.float16, use_safetensors=False
+    )
 pipe = pipe.to(device)
 pipe.enable_freeu(s1=0.6, s2=0.4, b1=1.1, b2=1.2)
 # pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
 pipe.scheduler.set_timesteps(50)
 pipe.enable_vae_slicing()
-pipe.enable_model_cpu_offload()
+if device != 'mps':
+    pipe.enable_model_cpu_offload()
 unet = pipe.unet
 cur_model_type = "Unstable" + "-" + "original"
 ### Insert PairedAttention
@@ -741,7 +756,8 @@ def process_generation(
         ##### load pipe
         del pipe
         gc.collect()
-        torch.cuda.empty_cache()
+        if device == 'cuda':
+            torch.cuda.empty_cache()
         model_info = models_dict[_sd_type]
         model_info["model_type"] = _model_type
         pipe = load_models(model_info, device=device, photomaker_path=photomaker_path)
@@ -751,7 +767,8 @@ def process_generation(
         pipe.enable_freeu(s1=0.6, s2=0.4, b1=1.1, b2=1.2)
         cur_model_type = _sd_type + "-" + _model_type
         pipe.enable_vae_slicing()
-        pipe.enable_model_cpu_offload()
+        if device != 'mps':
+            pipe.enable_model_cpu_offload()
     else:
         unet = pipe.unet
         # unet.set_attn_processor(copy.deepcopy(attn_procs))
@@ -766,7 +783,7 @@ def process_generation(
     if start_merge_step > 30:
         start_merge_step = 30
     print(f"start_merge_step:{start_merge_step}")
-    generator = torch.Generator(device="cuda").manual_seed(seed_)
+    generator = torch.Generator(device=device).manual_seed(seed_)
     sa32, sa64 = sa32_, sa64_
     id_length = id_length_
     clipped_prompts = prompts[:]
@@ -807,7 +824,8 @@ def process_generation(
     print(character_index_dict)
     print(invert_character_index_dict)
     # real_prompts = prompts[id_length:]
-    torch.cuda.empty_cache()
+    if device == 'cuda':
+        torch.cuda.empty_cache()
     write = True
     cur_step = 0
 
@@ -827,7 +845,7 @@ def process_generation(
             current_prompts = [replace_prompts[ref_ind] for ref_ind in ref_indexs]
             print(current_prompts)
             setup_seed(seed_)
-            generator = torch.Generator(device="cuda").manual_seed(seed_)
+            generator = torch.Generator(device=device).manual_seed(seed_)
             cur_step = 0
             cur_positive_prompts, negative_prompt = apply_style(
                 style_name, current_prompts, negative_prompt
@@ -886,7 +904,7 @@ def process_generation(
             raise gr.Error(
                 "Temporarily Not Support Multiple character in Ref Image Mode!"
             )
-        generator = torch.Generator(device="cuda").manual_seed(seed_)
+        generator = torch.Generator(device=device).manual_seed(seed_)
         cur_step = 0
         real_prompt = apply_style_positive(style_name, real_prompt)
         if _model_type == "original":
