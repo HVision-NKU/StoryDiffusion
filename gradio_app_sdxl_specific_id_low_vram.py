@@ -568,8 +568,8 @@ width = 768
 global pipe
 global sd_model_path
 pipe = None
-sd_model_path = models_dict["SDXL"]["path"]  # "SG161222/RealVisXL_V4.0"
-single_files = models_dict["SDXL"]["single_files"]
+sd_model_path = models_dict["Unstable"]["path"]  # "SG161222/RealVisXL_V4.0"
+single_files = models_dict["Unstable"]["single_files"]
 ### LOAD Stable Diffusion Pipeline
 if single_files:
     pipe = StableDiffusionXLPipeline.from_single_file(
