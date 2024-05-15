@@ -38,15 +38,13 @@ global models_dict
 
 models_dict = get_models_dict()
 
-#Automatically select the device
+# Automatically select the device
 device = (
     "cuda"
     if torch.cuda.is_available()
-    else "mps"
-    if torch.backends.mps.is_available()
-    else "cpu"
+    else "mps" if torch.backends.mps.is_available() else "cpu"
 )
-print(f'@@device:{device}')
+print(f"@@device:{device}")
 
 
 # check if the file exists locally at a specified path before downloading it.
@@ -70,7 +68,7 @@ MAX_SEED = np.iinfo(np.int32).max
 
 def setup_seed(seed):
     torch.manual_seed(seed)
-    if device == 'cuda':
+    if device == "cuda":
         torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     random.seed(seed)
@@ -571,10 +569,12 @@ global pipe
 global sd_model_path
 pipe = None
 sd_model_path = models_dict["SDXL"]["path"]  # "SG161222/RealVisXL_V4.0"
-single_files =  models_dict["SDXL"]["single_files"]
+single_files = models_dict["SDXL"]["single_files"]
 ### LOAD Stable Diffusion Pipeline
 if single_files:
-    pipe = StableDiffusionXLPipeline.from_single_file(sd_model_path, torch_dtype=torch.float16)
+    pipe = StableDiffusionXLPipeline.from_single_file(
+        sd_model_path, torch_dtype=torch.float16
+    )
 else:
     pipe = StableDiffusionXLPipeline.from_pretrained(
         sd_model_path, torch_dtype=torch.float16, use_safetensors=False
@@ -584,7 +584,7 @@ pipe.enable_freeu(s1=0.6, s2=0.4, b1=1.1, b2=1.2)
 # pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
 pipe.scheduler.set_timesteps(50)
 pipe.enable_vae_slicing()
-if device != 'mps':
+if device != "mps":
     pipe.enable_model_cpu_offload()
 unet = pipe.unet
 cur_model_type = "Unstable" + "-" + "original"
@@ -756,7 +756,7 @@ def process_generation(
         ##### load pipe
         del pipe
         gc.collect()
-        if device == 'cuda':
+        if device == "cuda":
             torch.cuda.empty_cache()
         model_info = models_dict[_sd_type]
         model_info["model_type"] = _model_type
@@ -767,7 +767,7 @@ def process_generation(
         pipe.enable_freeu(s1=0.6, s2=0.4, b1=1.1, b2=1.2)
         cur_model_type = _sd_type + "-" + _model_type
         pipe.enable_vae_slicing()
-        if device != 'mps':
+        if device != "mps":
             pipe.enable_model_cpu_offload()
     else:
         unet = pipe.unet
@@ -824,7 +824,7 @@ def process_generation(
     print(character_index_dict)
     print(invert_character_index_dict)
     # real_prompts = prompts[id_length:]
-    if device == 'cuda':
+    if device == "cuda":
         torch.cuda.empty_cache()
     write = True
     cur_step = 0
@@ -973,6 +973,7 @@ def array2string(arr):
 #################################################
 #################################################
 ### define the interface
+
 with gr.Blocks(css=css) as demo:
     binary_matrixes = gr.State([])
     color_layout = gr.State([])
@@ -1072,14 +1073,16 @@ with gr.Blocks(css=css) as demo:
                     )
                     id_length_ = gr.Slider(
                         label="Number of id images in total images",
-                        minimum=2,
+                        minimum=1,
                         maximum=4,
-                        value=2,
+                        value=1,
                         step=1,
                     )
-                    seed_ = gr.Slider(
-                        label="Seed", minimum=-1, maximum=MAX_SEED, value=0, step=1
-                    )
+                    with gr.Row():
+                        seed_ = gr.Slider(
+                            label="Seed", minimum=-1, maximum=MAX_SEED, value=0, step=1
+                        )
+                        randomize_seed_btn = gr.Button("🎲", size="sm")
                     num_steps = gr.Slider(
                         label="Number of sample steps",
                         minimum=20,
@@ -1154,6 +1157,13 @@ with gr.Blocks(css=css) as demo:
         fn=remove_back_to_files, outputs=[uploaded_files, clear_button, files]
     )
     char_btn.click(fn=load_character_files, inputs=char_path, outputs=[general_prompt])
+
+    randomize_seed_btn.click(
+        fn=lambda: random.randint(-1, MAX_SEED),
+        inputs=[],
+        outputs=seed_,
+    )
+
     final_run_btn.click(fn=set_text_unfinished, outputs=generated_information).then(
         process_generation,
         inputs=[
