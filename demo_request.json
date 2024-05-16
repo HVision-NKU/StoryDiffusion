@@ -20,3 +20,24 @@
   "font_choice": "Inkfree.ttf",
   "char_files": null
 }
+
+
+
+{
+  "sd_type": "Juggernaut",
+  "model_type": "Only Using Textual Description",
+   "upload_images": null,
+  "num_steps": 50,
+  "style_name": "Pixar/Disney Character",
+  "style_strength_ratio": 20.0,
+  "guidance_scale": 2.0,
+  "seed_": 44345342,
+  "general_prompt": "[Bob] A man, wearing a black suit\n[Alice]a woman, wearing a white shirt",
+  "negative_prompt": "bad anatomy, bad hands, missing fingers, extra fingers, three hands, three legs, bad arms, missing legs, missing arms, poorly drawn face, bad face, fused face, cloned face, three crus, fused feet, fused thigh, extra crus, ugly fingers, horn, cartoon, cg, 3d, unreal, animate, amputation, disconnected limbs",
+  "prompt_array": "[Bob] at home, read new paper #at home, The newspaper says there is a treasure house in the forest.\n[Bob] on the road, near the forest\n[Alice] is make a call at home # [Bob] invited [Alice] to join him on an adventure.\n[NC]A tiger appeared in the forest, at night.\n[Alice] The car on the road, near the forest #They drives to the forest in search of treasure.",
+  "G_height": 768,
+  "G_width": 768,
+  "comic_type": "Classic Comic Style",
+  "font_choice": "Inkfree.ttf"
+}
+

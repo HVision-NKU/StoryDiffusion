@@ -2,6 +2,7 @@ from this import d
 import gradio as gr
 import argparse
 from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List, Optional
 import numpy as np
@@ -11,6 +12,8 @@ import copy
 import os
 import random
 import datetime
+import uvicorn
+import threading
 from PIL import ImageFont, Image
 import base64
 from io import BytesIO
@@ -984,28 +987,30 @@ def array2string(arr):
 ### define the interface
 
 app = FastAPI()
-
+app.mount("/results", StaticFiles(directory="results"), name="results")
 
 class GenerationRequest(BaseModel):
+    class Config:
+        protected_namespaces = ()
     sd_type: str
     model_type: str
     upload_images: Optional[List[str]] = None
-    num_steps: int
-    style_name: str
-    Ip_Adapter_Strength: float
-    style_strength_ratio: float
-    guidance_scale: float
-    seed_: int
-    sa32_: float
-    sa64_: float
-    id_length_: int
+    num_steps: int = 20  # Default value
+    style_name: str = "Japanese Anime"  # Default value
+    Ip_Adapter_Strength: float = 0.5  # Default value
+    style_strength_ratio: float = 20.0  # Default value
+    guidance_scale: float = 5.0  # Default value
+    seed_: int = 0  # Default value
+    sa32_: float = 0.5  # Default value
+    sa64_: float = 0.5  # Default value
+    id_length_: int = 1  # Default value
     general_prompt: str
-    negative_prompt: str
+    negative_prompt: str = ""  # Default value
     prompt_array: str
-    G_height: int
-    G_width: int
-    comic_type: str
-    font_choice: str
+    G_height: int = 768  # Default value
+    G_width: int = 768  # Default value
+    comic_type: str = "No typesetting (default)"  # Default value
+    font_choice: str = "Inkfree.ttf"  # Default value
     char_files: Optional[str] = None
 
 
@@ -1044,7 +1049,7 @@ def generate(request: GenerationRequest):
         ):
             result = res
         image_paths = save_results(pipe.unet, result)
-        site_url = "https://localhost:8000/"
+        site_url = "http://localhost:8000/"
         # result_json = [pil_to_base64(img) for img in result]
         image_paths_with_url = [site_url + path for path in image_paths]
         print("Generated result:", image_paths_with_url)
@@ -1224,6 +1229,9 @@ with gr.Blocks(css=css) as demo:
                 label="Generation Details", value="", visible=False
             )
             gr.Markdown(version)
+           
+
+            
     model_type.change(
         fn=change_visiale_by_model_type,
         inputs=model_type,
@@ -1418,12 +1426,7 @@ with gr.Blocks(css=css) as demo:
         # run_on_click=True,
         label="😺 Examples 😺",
     )
-    gr.Markdown(article)
-
-
-import uvicorn
-import threading
-
+    gr.Markdown(article)    
 
 def run_gradio():
     demo.launch(server_name="0.0.0.0", share=True)

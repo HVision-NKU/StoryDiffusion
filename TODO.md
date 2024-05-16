@@ -6,3 +6,5 @@
 The following part of your input was truncated because CLIP can only handle sequences up to 77 tokens: ['linear compositions, scalable artwork, digital art, high contrast shadows'] - NEED to be increased.
 - API ready with queue and async and worker
 - Strings like "Only Using Textual Description", 4Panels, etc to code it in one place and transform to INT.
+- Add Ctrl + enter to Generate button.
+- Bigger padding on text and margin of white and a smaller text (font)
