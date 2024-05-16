@@ -1,5 +1,9 @@
 from this import d
 import gradio as gr
+import argparse
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from typing import List, Optional
 import numpy as np
 import torch
 import gc
@@ -7,7 +11,9 @@ import copy
 import os
 import random
 import datetime
-from PIL import ImageFont
+from PIL import ImageFont, Image
+import base64
+from io import BytesIO
 from utils.gradio_utils import (
     character_to_dict,
     process_original_prompt,
@@ -489,13 +495,16 @@ def save_results(unet, img_list):
         os.makedirs(folder_name)
         os.makedirs(weight_folder_name)
 
+    image_paths = []
     for idx, img in enumerate(img_list):
         file_path = os.path.join(folder_name, f"image_{idx}.png")  # 图片文件名
         img.save(file_path)
+        image_paths.append(file_path)
     global character_dict
     # for char in character_dict:
     #     description = character_dict[char]
     #     save_single_character_weights(unet,char,description,os.path.join(weight_folder_name, f'{char}.pt'))
+    return image_paths
 
 
 #################################################
@@ -678,7 +687,7 @@ def change_visiale_by_model_type(_model_type):
 
 
 def load_character_files(character_files: str):
-    if character_files == "":
+    if not character_files:
         raise gr.Error("Please set a character file!")
     character_files_arr = character_files.splitlines()
     primarytext = []
@@ -691,7 +700,7 @@ def load_character_files(character_files: str):
 
 
 def load_character_files_on_running(unet, character_files: str):
-    if character_files == "":
+    if not character_files:
         return False
     character_files_arr = character_files.splitlines()
     for character_file in character_files_arr:
@@ -973,6 +982,76 @@ def array2string(arr):
 #################################################
 #################################################
 ### define the interface
+
+app = FastAPI()
+
+
+class GenerationRequest(BaseModel):
+    sd_type: str
+    model_type: str
+    upload_images: Optional[List[str]] = None
+    num_steps: int
+    style_name: str
+    Ip_Adapter_Strength: float
+    style_strength_ratio: float
+    guidance_scale: float
+    seed_: int
+    sa32_: float
+    sa64_: float
+    id_length_: int
+    general_prompt: str
+    negative_prompt: str
+    prompt_array: str
+    G_height: int
+    G_width: int
+    comic_type: str
+    font_choice: str
+    char_files: Optional[str] = None
+
+
+def pil_to_base64(img: Image) -> str:
+    buffered = BytesIO()
+    img.save(buffered, format="PNG")
+    return base64.b64encode(buffered.getvalue()).decode("utf-8")
+
+
+@app.post("/generate")
+def generate(request: GenerationRequest):
+    try:
+        print("Received request data:", request)
+        result = []
+        for res in process_generation(
+            request.sd_type,
+            request.model_type,
+            request.upload_images,
+            request.num_steps,
+            request.style_name,
+            request.Ip_Adapter_Strength,
+            request.style_strength_ratio,
+            request.guidance_scale,
+            request.seed_,
+            request.sa32_,
+            request.sa64_,
+            request.id_length_,
+            request.general_prompt,
+            request.negative_prompt,
+            request.prompt_array,
+            request.G_height,
+            request.G_width,
+            request.comic_type,
+            request.font_choice,
+            request.char_files,
+        ):
+            result = res
+        image_paths = save_results(pipe.unet, result)
+        site_url = "https://localhost:8000/"
+        # result_json = [pil_to_base64(img) for img in result]
+        image_paths_with_url = [site_url + path for path in image_paths]
+        print("Generated result:", image_paths_with_url)
+        return {"image_paths": image_paths_with_url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 with gr.Blocks(css=css) as demo:
     binary_matrixes = gr.State([])
@@ -1342,4 +1421,32 @@ with gr.Blocks(css=css) as demo:
     gr.Markdown(article)
 
 
-demo.launch(server_name="0.0.0.0", share=True)
+import uvicorn
+import threading
+
+
+def run_gradio():
+    demo.launch(server_name="0.0.0.0", share=True)
+
+
+def run_fastapi():
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run Gradio and/or FastAPI server.")
+    parser.add_argument(
+        "--no-gradio", action="store_true", help="Do not start the Gradio interface."
+    )
+    args = parser.parse_args()
+
+    if not args.no_gradio:
+        gradio_thread = threading.Thread(target=run_gradio)
+        gradio_thread.start()
+
+    fastapi_thread = threading.Thread(target=run_fastapi)
+    fastapi_thread.start()
+
+    if not args.no_gradio:
+        gradio_thread.join()
+    fastapi_thread.join()
