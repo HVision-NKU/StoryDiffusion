@@ -6,6 +6,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List, Optional
 import numpy as np
+from dotenv import load_dotenv
+import os
 import torch
 import gc
 import copy
@@ -43,8 +45,8 @@ from utils.load_models_utils import get_models_dict, load_models
 
 STYLE_NAMES = list(styles.keys())
 DEFAULT_STYLE_NAME = "Japanese Anime"
+load_dotenv()
 global models_dict
-
 models_dict = get_models_dict()
 
 # Automatically select the device
@@ -618,7 +620,7 @@ for name in unet.attn_processors.keys():
         total_count += 1
     else:
         attn_procs[name] = AttnProcessor()
-print("successsfully load paired self-attention")
+
 print(f"number of the processor : {total_count}")
 unet.set_attn_processor(copy.deepcopy(attn_procs))
 global mask1024, mask4096
@@ -1049,7 +1051,7 @@ def generate(request: GenerationRequest):
         ):
             result = res
         image_paths = save_results(pipe.unet, result)
-        site_url = "http://localhost:8000/"
+        site_url = os.getenv("SITE_URL")
         # result_json = [pil_to_base64(img) for img in result]
         image_paths_with_url = [site_url + path for path in image_paths]
         print("Generated result:", image_paths_with_url)

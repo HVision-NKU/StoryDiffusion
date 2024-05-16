@@ -8,3 +8,4 @@ The following part of your input was truncated because CLIP can only handle sequ
 - Strings like "Only Using Textual Description", 4Panels, etc to code it in one place and transform to INT.
 - Add Ctrl + enter to Generate button.
 - Bigger padding on text and margin of white and a smaller text (font)
+- move general variables into .env file.
