@@ -1,8 +1,11 @@
+from calendar import c
+from operator import invert
+from webbrowser import get
 import torch
 import random
 import torch.nn as nn
 import torch.nn.functional as F
-
+import gradio as gr
 
 class SpatialAttnProcessor2_0(torch.nn.Module):
     r"""
@@ -426,3 +429,91 @@ class AttnProcessor2_0(torch.nn.Module):
 
 def is_torch2_available():
     return hasattr(F, "scaled_dot_product_attention")
+
+
+# 将列表转换为字典的函数
+def character_to_dict(general_prompt):
+    character_dict = {}    
+    generate_prompt_arr = general_prompt.splitlines()
+    character_index_dict = {}
+    invert_character_index_dict = {}
+    character_list = []
+    for ind,string in enumerate(generate_prompt_arr):
+        # 分割字符串寻找key和value
+        start = string.find('[')
+        end = string.find(']')
+        if start != -1 and end != -1:
+            key = string[start:end+1]
+            value = string[end+1:]
+            if "#" in value:
+                value =  value.rpartition('#')[0] 
+            if key in character_dict:
+                raise gr.Error("duplicate character descirption: " + key)
+            character_dict[key] = value
+            character_list.append(key)
+
+        
+    return character_dict,character_list 
+
+def get_id_prompt_index(character_dict,id_prompts):
+    replace_id_prompts = []
+    character_index_dict = {}
+    invert_character_index_dict = {}
+    for ind,id_prompt in enumerate(id_prompts):
+                for key in character_dict.keys():
+                    if key in id_prompt:
+                        if key not in character_index_dict:
+                            character_index_dict[key] = []
+                        character_index_dict[key].append(ind)
+                        invert_character_index_dict[ind] = key
+                        replace_id_prompts.append(id_prompt.replace(key,character_dict[key]))
+
+    return character_index_dict,invert_character_index_dict,replace_id_prompts
+
+def get_cur_id_list(real_prompt,character_dict,character_index_dict):
+    list_arr = []
+    for keys in character_index_dict.keys():
+        if keys in real_prompt:
+            list_arr = list_arr +  character_index_dict[keys]
+            real_prompt = real_prompt.replace(keys,character_dict[keys])
+    return list_arr,real_prompt
+
+def process_original_prompt(character_dict,prompts,id_length):
+    replace_prompts = []
+    character_index_dict = {}
+    invert_character_index_dict = {}
+    for ind,prompt in enumerate(prompts):
+                for key in character_dict.keys():
+                    if key in prompt:
+                        if key not in character_index_dict:
+                            character_index_dict[key] = []
+                        character_index_dict[key].append(ind)
+                        if ind not in invert_character_index_dict:
+                            invert_character_index_dict[ind] = []
+                        invert_character_index_dict[ind].append(key)
+                cur_prompt = prompt
+                if ind in invert_character_index_dict:
+                    for key in invert_character_index_dict[ind]:
+                        cur_prompt = cur_prompt.replace(key,character_dict[key])
+                replace_prompts.append(cur_prompt)
+    ref_index_dict = {}
+    ref_totals = []
+    print(character_index_dict)
+    for character_key in character_index_dict.keys():
+        if character_key not in character_index_dict:
+            raise gr.Error("{} not have prompt description, please remove it".format(character_key))
+        index_list = character_index_dict[character_key]
+        index_list = [index for index in index_list if len(invert_character_index_dict[index]) == 1]
+        if len(index_list) < id_length:
+            raise gr.Error(f"{character_key} not have enough prompt description, need no less than {id_length}, but you give {len(index_list)}")
+        ref_index_dict[character_key] = index_list[:id_length]
+        ref_totals = ref_totals + index_list[:id_length]
+    return character_index_dict,invert_character_index_dict,replace_prompts,ref_index_dict,ref_totals
+
+
+def get_ref_character(real_prompt,character_dict):
+    list_arr = []
+    for keys in character_dict.keys():
+        if keys in real_prompt:
+            list_arr = list_arr + [keys]
+    return list_arr

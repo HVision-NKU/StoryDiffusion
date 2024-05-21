@@ -5,16 +5,10 @@
 <div align="center">
   
 ## StoryDiffusion: Consistent Self-Attention for Long-Range Image and Video Generation  [![Paper page](https://huggingface.co/datasets/huggingface/badges/resolve/main/paper-page-md-dark.svg)]()
-[[Paper](https://arxiv.org/abs/2405.01434)] &emsp; [[Project Page](https://storydiffusion.github.io/)] &emsp;  [[🤗 Comic Generation Demo ](https://huggingface.co/spaces/YupengZhou/StoryDiffusion)] [![Replicate](https://replicate.com/cjwbw/StoryDiffusion/badge)](https://replicate.com/cjwbw/StoryDiffusion) <br>
 
-
+[[Paper](https://arxiv.org/abs/2405.01434)] &emsp; [[Project Page](https://storydiffusion.github.io/)] &emsp;  [[🤗 Comic Generation Demo ](https://huggingface.co/spaces/YupengZhou/StoryDiffusion)] [![Replicate](https://replicate.com/cjwbw/StoryDiffusion/badge)](https://replicate.com/cjwbw/StoryDiffusion) [![Run Comics Demo in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/HVision-NKU/StoryDiffusion/blob/main/Comic_Generation.ipynb) <br>
 </div>
 
-<div align="left">
-  
-  #### For results sharing and discussion: https://discord.gg/hSJZ35fV
-  #### For codebase and deployment-related discussion: https://discord.gg/2HFUHT9p
-</div>
 
 ---
 
@@ -22,15 +16,12 @@ Official implementation of **[StoryDiffusion: Consistent Self-Attention for Long
 
 ### **Demo Video**
 
-
-
-
 https://github.com/HVision-NKU/StoryDiffusion/assets/49511209/d5b80f8f-09b0-48cd-8b10-daff46d422af
 
 
 ### Update History
 
-You can visit [here](update.md) to visit update history.
+***You can visit [here](update.md) to visit update history.***
 
 ### 🌠  **Key Features:**
 StoryDiffusion can create a magic story by generating consistent images and videos. Our work mainly has two parts: 
@@ -120,8 +111,10 @@ You can open the `Comic_Generation.ipynb` and run the code.
 ## Start a local gradio demo
 Run the following command:
 
+**(Recommend)** We provide a low GPU Memory cost version, it was tested on a machine with 24GB GPU-memory(Tesla A10) and 30GB RAM, and expected to work well with >20 G GPU-memory.
+
 ```python
-python gradio_app_sdxl_specific_id.py
+python gradio_app_sdxl_specific_id_low_vram.py
 ```
 ```shell
 # use Docker
@@ -131,13 +124,6 @@ cd /workspace/StoryDiffusion;
 python gradio_app_sdxl_specific_id_low_vram.py 
 ```
 
-**(Recommend)** We provide a low GPU Memory cost version, it was tested on a machine with 24GB GPU-memory(Tesla A10) and 30GB RAM, and expected to work well with >20 G GPU-memory.
-
-```python
-python gradio_app_sdxl_specific_id_low_vram.py
-```
-
-
 ## Contact
 If you have any questions, you are very welcome to email ypzhousdu@gmail.com and zhoudaquan21@gmail.com
 
@@ -146,6 +132,18 @@ If you have any questions, you are very welcome to email ypzhousdu@gmail.com and
 
 # Disclaimer
 This project strives to impact the domain of AI-driven image and video generation positively. Users are granted the freedom to create images and videos using this tool, but they are expected to comply with local laws and utilize it responsibly. The developers do not assume any responsibility for potential misuse by users.
+
+# Related Resources
+Following are some third-party implementations of StoryDiffusion.
+
+
+## API
+
+- [runpod.io serverless worker](https://github.com/bes-dev/story-diffusion-runpod-serverless-worker) provided by [BeS](https://github.com/bes-dev).
+- [Replicate worker](https://github.com/camenduru/StoryDiffusion-replicate) provided by [camenduru](https://github.com/camenduru).
+
+
+
 
 # BibTeX
 If you find StoryDiffusion useful for your research and applications, please cite using this BibTeX:
