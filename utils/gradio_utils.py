@@ -494,7 +494,7 @@ def process_original_prompt(character_dict,prompts,id_length):
                 cur_prompt = prompt
                 if ind in invert_character_index_dict:
                     for key in invert_character_index_dict[ind]:
-                        cur_prompt = cur_prompt.replace(key,character_dict[key])
+                        cur_prompt = cur_prompt.replace(key,character_dict[key] + " ")
                 replace_prompts.append(cur_prompt)
     ref_index_dict = {}
     ref_totals = []

@@ -751,6 +751,7 @@ def process_generation(
             attn_processor.id_length = id_length
             attn_processor.total_length = id_length + 1
     gc.collect()
+    torch.cuda.empty_cache()
     if cur_model_type != _sd_type + "-" + _model_type:
         # apply the style template
         ##### load pipe
