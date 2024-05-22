@@ -111,13 +111,18 @@ You can open the `Comic_Generation.ipynb` and run the code.
 ## Start a local gradio demo
 Run the following command:
 
-
 **(Recommend)** We provide a low GPU Memory cost version, it was tested on a machine with 24GB GPU-memory(Tesla A10) and 30GB RAM, and expected to work well with >20 G GPU-memory.
 
 ```python
 python gradio_app_sdxl_specific_id_low_vram.py
 ```
-
+```shell
+# use Docker
+docker build -f Dockerfile -t storydiffusion:dev .
+docker run -it --name storydiffusion  --runtime=nvidia --gpus all storydiffusion:dev
+cd /workspace/StoryDiffusion; 
+python gradio_app_sdxl_specific_id_low_vram.py 
+```
 
 ## Contact
 If you have any questions, you are very welcome to email ypzhousdu@gmail.com and zhoudaquan21@gmail.com
