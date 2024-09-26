@@ -147,6 +147,6 @@ If you find StoryDiffusion useful for your research and applications, please cit
 @article{zhou2024storydiffusion,
   title={StoryDiffusion: Consistent Self-Attention for Long-Range Image and Video Generation},
   author={Zhou, Yupeng and Zhou, Daquan and Cheng, Ming-Ming and Feng, Jiashi and Hou, Qibin},
-  journal={arXiv preprint arXiv:2405.01434},
+  journal={NeurIPS 2024},
   year={2024}
 }
